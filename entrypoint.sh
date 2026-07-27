@@ -10,6 +10,8 @@ a2enconf servername >/dev/null 2>&1 || true
 
 apache2ctl -t
 
+php /var/www/html/scripts/migrate.php || echo "AVISO: migracao falhou ou banco ainda indisponivel - verifique os logs acima."
+
 service cron start
 
 exec "$@"
