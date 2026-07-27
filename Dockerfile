@@ -15,10 +15,10 @@ RUN composer install --no-dev --optimize-autoloader --no-interaction || true
 
 COPY . .
 
-COPY docker/crontab /etc/cron.d/glpi-telegram-cron
+COPY crontab /etc/cron.d/glpi-telegram-cron
 RUN chmod 0644 /etc/cron.d/glpi-telegram-cron && crontab /etc/cron.d/glpi-telegram-cron
 
-COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 EXPOSE 80
