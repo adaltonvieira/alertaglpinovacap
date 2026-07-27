@@ -14,4 +14,7 @@ php /var/www/html/scripts/migrate.php || echo "AVISO: migracao falhou ou banco a
 
 service cron start
 
+mkdir -p /var/www/html/logs
+nohup php /var/www/html/scripts/worker_dispatch_notifications.php >> /var/www/html/logs/dispatch.log 2>&1 &
+
 exec "$@"
