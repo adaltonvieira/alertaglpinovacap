@@ -1,0 +1,119 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: glpi_telegram_app
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - ./:/var/www/html
+      - ./logs:/var/www/html/logs
+    ports:
+      - "8080:80"
+    networks:
+      - glpi_telegram_net
+
+  worker-sync:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: glpi_telegram_worker_sync
+    restart: unless-stopped
+    env_file: .env
+    command: ["php", "scripts/worker_sync.php"]
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - ./:/var/www/html
+    networks:
+      - glpi_telegram_net
+
+  worker-sla:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: glpi_telegram_worker_sla
+    restart: unless-stopped
+    env_file: .env
+    command: ["php", "scripts/worker_sla_monitor.php"]
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - ./:/var/www/html
+    networks:
+      - glpi_telegram_net
+
+  worker-notify:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: glpi_telegram_worker_notify
+    restart: unless-stopped
+    env_file: .env
+    command: ["php", "scripts/worker_dispatch_notifications.php"]
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - ./:/var/www/html
+    networks:
+      - glpi_telegram_net
+
+  db:
+    image: mysql:8.0
+    container_name: glpi_telegram_db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-glpi_telegram}
+      MYSQL_USER: ${DB_USERNAME:-glpi_telegram}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./database/migrations:/docker-entrypoint-initdb.d
+    ports:
+      - "3306:3306"
+    networks:
+      - glpi_telegram_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: glpi_telegram_redis
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - glpi_telegram_net
+
+  # Opcional — habilitar apenas se optar por RabbitMQ em vez de filas Redis
+  # para maior robustez em ambientes de alto volume.
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: glpi_telegram_rabbitmq
+    restart: unless-stopped
+    profiles: ["rabbitmq"]
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-glpi_telegram}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - glpi_telegram_net
+
+networks:
+  glpi_telegram_net:
+    driver: bridge
+
+volumes:
+  db_data:
+  redis_data:
