@@ -119,7 +119,7 @@ CREATE TABLE IF NOT EXISTS notificacoes_enviadas (
     INDEX idx_enviado_em (enviado_em)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Fila assíncrona de mensagens (também espelhada em Redis; tabela serve
+-- Fila assíncrona de mensagens (também espelhada em Redis\) - tabela serve
 -- como fallback/persistência e auditoria)
 CREATE TABLE IF NOT EXISTS fila_mensagens (
     id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
