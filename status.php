@@ -62,12 +62,7 @@ echo "GLPI_BASE_URL = " . getenv('GLPI_BASE_URL') . "\n";
 echo "GLPI_APP_TOKEN = " . mascarar(getenv('GLPI_APP_TOKEN')) . "\n";
 echo "GLPI_USER_TOKEN = " . mascarar(getenv('GLPI_USER_TOKEN')) . "\n";
 try {
-    $glpi = new App\GLPI\GlpiClient([
-        'base_url'   => getenv('GLPI_BASE_URL'),
-        'app_token'  => getenv('GLPI_APP_TOKEN'),
-        'user_token' => getenv('GLPI_USER_TOKEN'),
-        'timeout'    => 10,
-    ]);
+    $glpi = new App\GLPI\GlpiClient(require __DIR__ . '/config/glpi.php');
     $glpi->initSession();
     echo "OK initSession() funcionou - App Token e User Token validos.\n";
     $glpi->killSession();

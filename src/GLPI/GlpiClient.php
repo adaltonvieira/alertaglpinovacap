@@ -4,14 +4,6 @@ namespace App\GLPI;
 
 use RuntimeException;
 
-/**
- * Cliente da API REST do GLPI.
- *
- * Autenticação conforme documentação oficial do GLPI (App-Token + User-Token
- * -> Session-Token), com renovação automática de sessão. Preferido sobre
- * autenticação usuário/senha por token, evitando manter credenciais em texto
- * puro no serviço.
- */
 class GlpiClient
 {
     private string $baseUrl;
@@ -19,6 +11,8 @@ class GlpiClient
     private string $userToken;
     private ?string $sessionToken = null;
     private int $timeout;
+    private bool $verifySsl;
+    private ?string $caBundle;
 
     public function __construct(array $config)
     {
@@ -26,6 +20,8 @@ class GlpiClient
         $this->appToken  = $config['app_token'];
         $this->userToken = $config['user_token'];
         $this->timeout   = $config['timeout'] ?? 10;
+        $this->verifySsl = $config['verify_ssl'] ?? true;
+        $this->caBundle  = $config['ca_bundle'] ?? null;
     }
 
     public function initSession(): void
@@ -36,7 +32,7 @@ class GlpiClient
         ]);
 
         if (empty($response['session_token'])) {
-            throw new RuntimeException('Falha ao iniciar sessão GLPI: token não retornado.');
+            throw new RuntimeException('Falha ao iniciar sessao GLPI: token nao retornado.');
         }
 
         $this->sessionToken = $response['session_token'];
@@ -50,13 +46,6 @@ class GlpiClient
         }
     }
 
-    /**
-     * Busca chamados (Ticket) atualizados desde um timestamp, usado pelo
-     * mecanismo de polling otimizado quando webhooks não estão disponíveis.
-     *
-     * TR/prompt: "Caso não seja possível utilizar Webhooks, implementar
-     * monitoramento inteligente via API utilizando polling otimizado."
-     */
     public function buscarTicketsAtualizadosDesde(\DateTimeImmutable $desde): array
     {
         $this->ensureSession();
@@ -64,7 +53,7 @@ class GlpiClient
         $criteria = [
             'criteria' => [
                 [
-                    'field'      => 19, // date_mod
+                    'field'      => 19,
                     'searchtype' => 'morethan',
                     'value'      => $desde->format('Y-m-d H:i:s'),
                 ],
@@ -95,10 +84,6 @@ class GlpiClient
         return $this->request('GET', "/User/{$userId}", [], $this->authHeaders());
     }
 
-    /**
-     * Adiciona um followup (acompanhamento) ao chamado — usado, por exemplo,
-     * quando o técnico confirma leitura ou assume o chamado via botão do bot.
-     */
     public function adicionarAcompanhamento(int $ticketId, string $conteudo, bool $privado = true): array
     {
         $this->ensureSession();
@@ -147,7 +132,13 @@ class GlpiClient
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => $this->timeout,
             CURLOPT_HTTPHEADER     => $allHeaders,
+            CURLOPT_SSL_VERIFYPEER => $this->verifySsl,
+            CURLOPT_SSL_VERIFYHOST => $this->verifySsl ? 2 : 0,
         ]);
+
+        if ($this->caBundle) {
+            curl_setopt($ch, CURLOPT_CAINFO, $this->caBundle);
+        }
 
         if (!empty($body)) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
@@ -159,13 +150,16 @@ class GlpiClient
         curl_close($ch);
 
         if ($raw === false) {
-            throw new RuntimeException("Erro de conexão com GLPI: {$error}");
+            throw new RuntimeException("Erro de conexao com GLPI: {$error}");
         }
 
         $decoded = json_decode($raw, true);
 
+        if (!is_array($decoded)) {
+            $decoded = ['result' => $decoded];
+        }
+
         if ($httpCode >= 400) {
-            // Sessão expirada -> tenta renovar uma vez
             if ($httpCode === 401 && $this->sessionToken !== null) {
                 $this->sessionToken = null;
                 $this->initSession();
@@ -178,6 +172,6 @@ class GlpiClient
             throw new RuntimeException("Erro GLPI HTTP {$httpCode}: {$raw}");
         }
 
-        return $decoded ?? [];
+        return $decoded;
     }
 }
