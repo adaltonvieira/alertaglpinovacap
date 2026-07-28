@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 set -e
 
 a2dismod mpm_event mpm_worker >/dev/null 2>&1 || true
