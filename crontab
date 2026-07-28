@@ -1,14 +1,14 @@
-﻿# SincronizaÃ§Ã£o com GLPI (polling otimizado) â€” a cada 1 minuto
+# Sincronizacao com GLPI (polling otimizado) - a cada 1 minuto
 * * * * * root php /var/www/html/scripts/worker_sync.php >> /var/www/html/logs/sync.log 2>&1
 
-# Monitoramento de SLA (alertas de vencimento, escalonamento) â€” a cada 1 minuto
+# Monitoramento de SLA (alertas de vencimento, escalonamento) - a cada 1 minuto
 * * * * * root php /var/www/html/scripts/worker_sla_monitor.php >> /var/www/html/logs/sla.log 2>&1
 
-# Resumo diÃ¡rio para tÃ©cnicos Ã s 08:00
+# Resumo diario para tecnicos as 08:00
 0 8 * * 1-5 root php /var/www/html/scripts/report_resumo_diario_tecnicos.php >> /var/www/html/logs/reports.log 2>&1
 
-# Resumo gerencial ao fim do expediente (19h, dias Ãºteis)
+# Resumo gerencial ao fim do expediente (19h, dias uteis)
 0 19 * * 1-5 root php /var/www/html/scripts/report_resumo_gerencial.php >> /var/www/html/logs/reports.log 2>&1
 
-# Retry de mensagens que falharam (backoff jÃ¡ calculado em proxima_tentativa_em)
+# Retry de mensagens que falharam (backoff ja calculado em proxima_tentativa_em)
 * * * * * root php /var/www/html/scripts/worker_retry_fila.php >> /var/www/html/logs/retry.log 2>&1
