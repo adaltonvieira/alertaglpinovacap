@@ -343,26 +343,28 @@ class GlpiSyncWorker
     private function mapearPrioridadeGlpi(int $glpiPriority): string
     {
         return match ($glpiPriority) {
-            6 => ''CRITICA'',
-            5, 4 => ''ALTA'',
-            3 => ''MEDIA'',
-            default => ''BAIXA'',
+            6 => 'CRITICA',
+            5, 4 => 'ALTA',
+            3 => 'MEDIA',
+            default => 'BAIXA',
         };
     }
 
     private function resolverNomeSolicitante(array $ticket): ?string
     {
-        $recipientId = (int) ($ticket[''users_id_recipient''] ?? 0);
+        $recipientId = (int) ($ticket['users_id_recipient'] ?? 0);
         if ($recipientId <= 0) {
             return null;
         }
+
         try {
             $user = $this->glpi->getUser($recipientId);
         } catch (\Throwable $e) {
             return null;
         }
-        $nome = trim(($user[''firstname''] ?? '''') . '' '' . ($user[''realname''] ?? ''''));
-        return $nome !== '''' ? $nome : ($user[''name''] ?? null);
+
+        $nome = trim(($user['firstname'] ?? '') . ' ' . ($user['realname'] ?? ''));
+        return $nome !== '' ? $nome : ($user['name'] ?? null);
     }
 
     private function mapearImpacto(int $glpiImpact): string
