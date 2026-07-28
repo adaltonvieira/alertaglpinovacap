@@ -69,13 +69,19 @@ class GlpiClient
     public function getTicket(int $id): array
     {
         $this->ensureSession();
-        return $this->request('GET', "/Ticket/{$id}?with_devices=false", [], $this->authHeaders());
+        return $this->request('GET', "/Ticket/{$id}?with_devices=false&expand_dropdowns=true", [], $this->authHeaders());
     }
 
     public function getTicketUsers(int $ticketId): array
     {
         $this->ensureSession();
         return $this->request('GET', "/Ticket/{$ticketId}/Ticket_User", [], $this->authHeaders());
+    }
+
+    public function listarSearchOptions(string $itemtype): array
+    {
+        $this->ensureSession();
+        return $this->request('GET', "/listSearchOptions/{$itemtype}", [], $this->authHeaders());
     }
 
     public function getUser(int $userId): array

@@ -3,24 +3,15 @@
 namespace App\Workers;
 
 use App\GLPI\GlpiClient;
+use App\Models\Chamado;
 use App\Services\SlaEngine;
 use App\Services\MessageFormatter;
 use App\Services\NotificationDispatcher;
+use App\Support\GlpiUrl;
+use App\Telegram\TelegramClient;
 use PDO;
 use DateTimeImmutable;
 
-/**
- * Worker executado via cron (a cada N segundos — ver docker/crontab) que:
- *  1. Busca chamados novos/alterados no GLPI desde a última execução.
- *  2. Detecta os eventos: novo chamado, atribuição, reatribuição,
- *     alteração de prioridade/SLA, resolução, fechamento.
- *  3. Persiste o estado local (tabela `chamados`) e dispara notificações.
- *
- * Preferência do prompt: usar Webhooks quando disponíveis. Este worker cobre
- * o caso "monitoramento inteligente via API utilizando polling otimizado"
- * para quando Webhooks não estiverem habilitados no GLPI, e também serve
- * de reconciliador (safety net) mesmo quando webhooks estão ativos.
- */
 class GlpiSyncWorker
 {
     public function __construct(
@@ -39,7 +30,7 @@ class GlpiSyncWorker
         $resultado = $this->glpi->buscarTicketsAtualizadosDesde($desde);
 
         foreach ($resultado['data'] ?? $resultado as $linha) {
-            $ticketId = (int) ($linha['2'] ?? $linha['id'] ?? 0); // campo GLPI '2' = ID em /search
+            $ticketId = (int) ($linha['2'] ?? $linha['id'] ?? 0);
             if ($ticketId <= 0) {
                 continue;
             }
@@ -56,10 +47,10 @@ class GlpiSyncWorker
 
         $existente = $this->buscarChamadoLocal($ticketId);
 
-        $impacto    = $this->mapearImpacto($ticket['impact'] ?? 3);
-        $urgencia   = $this->mapearUrgencia($ticket['urgency'] ?? 3);
+        $impacto    = $this->mapearImpacto((int) ($ticket['impact'] ?? 3));
+        $urgencia   = $this->mapearUrgencia((int) ($ticket['urgency'] ?? 3));
         $tipo       = ((int) ($ticket['type'] ?? 1)) === 2 ? 'REQUISICAO' : 'INCIDENTE';
-        $criticidade = $this->sla->calcularCriticidade($impacto, $urgencia);
+        $criticidade = $this->mapearPrioridadeGlpi((int) ($ticket['priority'] ?? 3));
 
         $abertoEm = new DateTimeImmutable($ticket['date'] ?? 'now');
         $equipe   = $this->equipeResponsavelPorGrupo((int) ($ticket['groups_id_assign'] ?? 0));
@@ -77,12 +68,13 @@ class GlpiSyncWorker
 
         $statusGlpi = $this->mapearStatus((int) ($ticket['status'] ?? 1));
         $tecnicoAtualId = $this->resolverTecnicoAtribuido($ticketId);
+        $solicitanteNome = $this->resolverNomeSolicitante($ticket);
 
         if ($existente === null) {
-            $this->inserirChamado($ticket, $ticketId, $tipo, $impacto, $urgencia, $criticidade,
+            $chamadoId = $this->inserirChamado($ticket, $ticketId, $tipo, $impacto, $urgencia, $criticidade,
                 $equipe, $statusGlpi, $abertoEm, $prazoInicio, $prazoResolucao, $tecnicoAtualId);
 
-            $this->notificarNovoChamado($ticketId, $tecnicoAtualId);
+            $this->notificarNovoChamado($chamadoId, $tecnicoAtualId);
             return;
         }
 
@@ -93,6 +85,10 @@ class GlpiSyncWorker
             'status_glpi'      => $statusGlpi,
             'tecnico_atual_id' => $tecnicoAtualId,
             'prazo_resolucao'  => $prazoResolucao,
+            'ticket'           => $ticket,
+            'titulo'           => $ticket['name'] ?? $existente['titulo'],
+            'categoria'        => $ticket['itilcategories_id'] ?? $existente['categoria'],
+            'solicitante_nome' => $solicitanteNome ?? $existente['solicitante_nome'],
         ]);
     }
 
@@ -110,6 +106,7 @@ class GlpiSyncWorker
         $this->db->prepare(
             'UPDATE chamados SET impacto = :impacto, urgencia = :urgencia, criticidade = :criticidade,
                 status_glpi = :status, tecnico_atual_id = :tecnico, prazo_resolucao = :prazo,
+                titulo = :titulo, categoria = :categoria, solicitante_nome = :solicitante,
                 resolvido_em = IF(:resolvido = 1, NOW(), resolvido_em),
                 fechado_em = IF(:fechado = 1, NOW(), fechado_em)
              WHERE id = :id'
@@ -120,15 +117,18 @@ class GlpiSyncWorker
             'status'     => $depois['status_glpi'],
             'tecnico'    => $depois['tecnico_atual_id'],
             'prazo'      => $depois['prazo_resolucao']->format('Y-m-d H:i:s'),
+            'titulo'     => $depois['titulo'] ?? $antes['titulo'],
+            'categoria'  => $depois['categoria'] ?? $antes['categoria'],
+            'solicitante'=> $depois['solicitante_nome'] ?? $antes['solicitante_nome'],
             'resolvido'  => $foiResolvido ? 1 : 0,
             'fechado'    => $foiFechado ? 1 : 0,
             'id'         => $chamadoId,
         ]);
 
         if ($mudouTecnico && $depois['tecnico_atual_id'] !== null && $antes['tecnico_atual_id'] === null) {
-            $this->notificarNovoChamado($antes['glpi_ticket_id'], $depois['tecnico_atual_id'], atribuicaoDireta: true);
+            $this->notificarNovoChamado($chamadoId, $depois['tecnico_atual_id'], atribuicaoDireta: true);
         } elseif ($mudouTecnico && $depois['tecnico_atual_id'] !== null) {
-            $this->notificarReatribuicao($chamadoId, $antes['tecnico_atual_id'], $depois['tecnico_atual_id']);
+            $this->notificarReatribuicao($chamadoId, $antes['tecnico_atual_id'] ? (int) $antes['tecnico_atual_id'] : null, (int) $depois['tecnico_atual_id']);
         }
 
         if ($mudouCriticidade) {
@@ -136,7 +136,7 @@ class GlpiSyncWorker
         }
 
         if ($foiResolvido) {
-            $this->notificarResolucao($chamadoId);
+            $this->notificarResolucao($chamadoId, $depois['ticket'] ?? []);
         }
 
         if ($foiFechado) {
@@ -144,8 +144,226 @@ class GlpiSyncWorker
         }
     }
 
-    // --- Métodos de mapeamento GLPI -> domínio (ajustar aos IDs reais do
-    //     ambiente GLPI da NOVACAP durante a implantação) ---------------
+    private function notificarNovoChamado(int $chamadoId, ?int $tecnicoId, bool $atribuicaoDireta = false): void
+    {
+        $chamado = $this->hidratarChamado($chamadoId);
+        if ($chamado === null) {
+            return;
+        }
+
+        if ($tecnicoId === null) {
+            $this->dispatcher->enfileirar(
+                $chamadoId,
+                $this->chatGrupoPorEquipe($chamado->equipeAtual, 'novo_chamado'),
+                'novo_chamado',
+                $this->formatter->novoChamado($chamado)
+            );
+            return;
+        }
+
+        $tecnico = $this->buscarTecnico($tecnicoId);
+        if ($tecnico === null) {
+            return;
+        }
+
+        $texto = $atribuicaoDireta
+            ? $this->formatter->chamadoAtribuido($chamado, $tecnico['nome'])
+            : $this->formatter->novoChamado($chamado);
+
+        $this->dispatcher->enfileirar(
+            $chamadoId,
+            (int) $tecnico['telegram_chat_id'],
+            'atribuicao',
+            $texto,
+            TelegramClient::tecladoAcoesChamado($chamadoId, $chamado->linkGlpi)
+        );
+    }
+
+    private function notificarReatribuicao(int $chamadoId, ?int $tecnicoAnteriorId, int $tecnicoNovoId): void
+    {
+        $chamado = $this->hidratarChamado($chamadoId);
+        if ($chamado === null) {
+            return;
+        }
+
+        $tecnicoNovo = $this->buscarTecnico($tecnicoNovoId);
+        if ($tecnicoNovo === null) {
+            return;
+        }
+
+        $tecnicoAnterior = $tecnicoAnteriorId ? $this->buscarTecnico($tecnicoAnteriorId) : null;
+        $nomeAnterior = $tecnicoAnterior['nome'] ?? '(sem tecnico anterior)';
+
+        $this->db->prepare(
+            'INSERT INTO chamado_reatribuicoes (chamado_id, tecnico_anterior_id, tecnico_novo_id)
+             VALUES (:chamado_id, :anterior, :novo)'
+        )->execute([
+            'chamado_id' => $chamadoId,
+            'anterior'   => $tecnicoAnteriorId,
+            'novo'       => $tecnicoNovoId,
+        ]);
+
+        $this->dispatcher->enfileirar(
+            $chamadoId,
+            (int) $tecnicoNovo['telegram_chat_id'],
+            'reatribuicao',
+            $this->formatter->reatribuicao($chamado, $nomeAnterior, $tecnicoNovo['nome'], null),
+            TelegramClient::tecladoAcoesChamado($chamadoId, $chamado->linkGlpi)
+        );
+
+        if ($tecnicoAnterior !== null) {
+            $this->dispatcher->enfileirar(
+                $chamadoId,
+                (int) $tecnicoAnterior['telegram_chat_id'],
+                'reatribuicao_anterior',
+                "Info: O chamado #{$chamado->numero} foi reatribuido para {$tecnicoNovo['nome']}."
+            );
+        }
+    }
+
+    private function notificarAlteracaoPrioridade(int $chamadoId, array $antes, array $depois): void
+    {
+        $chamado = $this->hidratarChamado($chamadoId);
+        if ($chamado === null) {
+            return;
+        }
+
+        $texto = $this->formatter->alteracaoPrioridade($chamado, [
+            'urgencia'    => $antes['urgencia'],
+            'impacto'     => $antes['impacto'],
+            'criticidade' => $antes['criticidade'],
+        ]);
+
+        $destino = $chamado->tecnicoAtualId !== null
+            ? $this->chatDoTecnico($chamado->tecnicoAtualId)
+            : $this->chatGrupoPorEquipe($chamado->equipeAtual, 'novo_chamado');
+
+        if ($destino !== null) {
+            $this->dispatcher->enfileirar($chamadoId, $destino, 'alteracao_prioridade', $texto);
+        }
+    }
+
+    private function notificarResolucao(int $chamadoId, array $ticket): void
+    {
+        $chamado = $this->hidratarChamado($chamadoId);
+        if ($chamado === null) {
+            return;
+        }
+
+        $tempoGastoMinutos = (int) ((time() - $chamado->abertoEm->getTimestamp()) / 60);
+        $nomeResolvedor = '-';
+
+        if ($chamado->tecnicoAtualId !== null) {
+            $tecnico = $this->buscarTecnico($chamado->tecnicoAtualId);
+            $nomeResolvedor = $tecnico['nome'] ?? '-';
+        }
+
+        $destino = $chamado->tecnicoAtualId !== null
+            ? $this->chatDoTecnico($chamado->tecnicoAtualId)
+            : $this->chatGrupoPorEquipe($chamado->equipeAtual, 'novo_chamado');
+
+        if ($destino !== null) {
+            $this->dispatcher->enfileirar(
+                $chamadoId,
+                $destino,
+                'resolvido',
+                $this->formatter->chamadoResolvido($chamado, $nomeResolvedor, $tempoGastoMinutos)
+            );
+        }
+    }
+
+    private function notificarFechamento(int $chamadoId): void
+    {
+        $chamado = $this->hidratarChamado($chamadoId);
+        if ($chamado === null) {
+            return;
+        }
+
+        $destino = $chamado->tecnicoAtualId !== null
+            ? $this->chatDoTecnico($chamado->tecnicoAtualId)
+            : $this->chatGrupoPorEquipe($chamado->equipeAtual, 'novo_chamado');
+
+        if ($destino !== null) {
+            $this->dispatcher->enfileirar($chamadoId, $destino, 'fechado', $this->formatter->chamadoFechado($chamado));
+        }
+    }
+
+    private function hidratarChamado(int $chamadoId): ?Chamado
+    {
+        $stmt = $this->db->prepare(
+            'SELECT c.*, l.nome AS localidade_nome
+             FROM chamados c
+             LEFT JOIN localidades l ON l.id = c.localidade_id
+             WHERE c.id = :id'
+        );
+        $stmt->execute(['id' => $chamadoId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$row) {
+            return null;
+        }
+
+        $row['link_glpi'] = GlpiUrl::ticketLink((int) $row['glpi_ticket_id']);
+        return Chamado::fromArray($row);
+    }
+
+    private function buscarTecnico(int $tecnicoId): ?array
+    {
+        $stmt = $this->db->prepare('SELECT * FROM tecnicos WHERE id = :id AND ativo = 1');
+        $stmt->execute(['id' => $tecnicoId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    private function chatDoTecnico(int $tecnicoId): ?int
+    {
+        $tecnico = $this->buscarTecnico($tecnicoId);
+        return $tecnico ? (int) $tecnico['telegram_chat_id'] : null;
+    }
+
+    private function chatGrupoPorEquipe(string $equipe, string $tipoGrupo): ?int
+    {
+        $stmt = $this->db->prepare(
+            "SELECT chat_id FROM grupos_telegram
+             WHERE (equipe_vinculada = :equipe OR tipo = :tipo) AND ativo = 1
+             ORDER BY (equipe_vinculada = :equipe2) DESC
+             LIMIT 1"
+        );
+        $stmt->execute(['equipe' => $equipe, 'tipo' => $tipoGrupo, 'equipe2' => $equipe]);
+        $chatId = $stmt->fetchColumn();
+
+        if ($chatId !== false) {
+            return (int) $chatId;
+        }
+
+        $fallback = getenv('TELEGRAM_GRUPO_NOVO_CHAMADO_ID');
+        return $fallback ? (int) $fallback : null;
+    }
+
+    private function mapearPrioridadeGlpi(int $glpiPriority): string
+    {
+        return match ($glpiPriority) {
+            6 => ''CRITICA'',
+            5, 4 => ''ALTA'',
+            3 => ''MEDIA'',
+            default => ''BAIXA'',
+        };
+    }
+
+    private function resolverNomeSolicitante(array $ticket): ?string
+    {
+        $recipientId = (int) ($ticket[''users_id_recipient''] ?? 0);
+        if ($recipientId <= 0) {
+            return null;
+        }
+        try {
+            $user = $this->glpi->getUser($recipientId);
+        } catch (\Throwable $e) {
+            return null;
+        }
+        $nome = trim(($user[''firstname''] ?? '''') . '' '' . ($user[''realname''] ?? ''''));
+        return $nome !== '''' ? $nome : ($user[''name''] ?? null);
+    }
 
     private function mapearImpacto(int $glpiImpact): string
     {
@@ -170,8 +388,6 @@ class GlpiSyncWorker
 
     private function mapearStatus(int $glpiStatus): string
     {
-        // Status GLPI padrão: 1=novo,2=em atendimento(atribuído),
-        // 3=em atendimento(planejado),4=pendente,5=solucionado,6=fechado
         return match ($glpiStatus) {
             1 => 'novo',
             2, 3 => 'atribuido',
@@ -190,14 +406,22 @@ class GlpiSyncWorker
 
     private function resolverTecnicoAtribuido(int $ticketId): ?int
     {
-        $stmt = $this->db->prepare('SELECT id FROM tecnicos WHERE glpi_user_id = (
-            SELECT users_id FROM glpi_ticket_users_cache WHERE ticket_id = :tid LIMIT 1
-        )');
-        // Nota: em produção, usar GlpiClient::getTicketUsers($ticketId) em
-        // vez de tabela de cache; simplificado aqui por clareza estrutural.
-        $stmt->execute(['tid' => $ticketId]);
-        $id = $stmt->fetchColumn();
-        return $id !== false ? (int) $id : null;
+        try {
+            $vinculos = $this->glpi->getTicketUsers($ticketId);
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        foreach ($vinculos as $vinculo) {
+            if ((int) ($vinculo['type'] ?? 0) === 2 && !empty($vinculo['users_id'])) {
+                $stmt = $this->db->prepare('SELECT id FROM tecnicos WHERE glpi_user_id = :uid AND ativo = 1');
+                $stmt->execute(['uid' => (int) $vinculo['users_id']]);
+                $id = $stmt->fetchColumn();
+                return $id !== false ? (int) $id : null;
+            }
+        }
+
+        return null;
     }
 
     private function buscarChamadoLocal(int $ticketId): ?array
@@ -212,7 +436,7 @@ class GlpiSyncWorker
         array $ticket, int $ticketId, string $tipo, string $impacto, string $urgencia,
         string $criticidade, string $equipe, string $status, DateTimeImmutable $abertoEm,
         DateTimeImmutable $prazoInicio, DateTimeImmutable $prazoResolucao, ?int $tecnicoId
-    ): void {
+    ): int {
         $this->db->prepare(
             'INSERT INTO chamados
                 (glpi_ticket_id, numero, titulo, tipo, categoria, solicitante_nome,
@@ -225,10 +449,10 @@ class GlpiSyncWorker
         )->execute([
             'tid'         => $ticketId,
             'numero'      => (string) $ticketId,
-            'titulo'      => $ticket['name'] ?? '(sem título)',
+            'titulo'      => $ticket['name'] ?? '(sem titulo)',
             'tipo'        => $tipo,
             'categoria'   => $ticket['itilcategories_id'] ?? null,
-            'solicitante' => $ticket['users_id_recipient'] ?? null,
+            'solicitante' => $this->resolverNomeSolicitante($ticket),
             'impacto'     => $impacto,
             'urgencia'    => $urgencia,
             'criticidade' => $criticidade,
@@ -239,33 +463,8 @@ class GlpiSyncWorker
             'prazo_resolucao' => $prazoResolucao->format('Y-m-d H:i:s'),
             'aberto_em'       => $abertoEm->format('Y-m-d H:i:s'),
         ]);
-    }
 
-    private function notificarNovoChamado(int $ticketId, ?int $tecnicoId, bool $atribuicaoDireta = false): void
-    {
-        // Implementação delega a montagem do Chamado + texto ao chamador
-        // (ChamadoRepository::hidratar) — omitido aqui por brevidade de
-        // amostra; ver src/Repositories/ChamadoRepository.php
-    }
-
-    private function notificarReatribuicao(int $chamadoId, ?int $tecnicoAnteriorId, int $tecnicoNovoId): void
-    {
-        // idem
-    }
-
-    private function notificarAlteracaoPrioridade(int $chamadoId, array $antes, array $depois): void
-    {
-        // idem
-    }
-
-    private function notificarResolucao(int $chamadoId): void
-    {
-        // idem
-    }
-
-    private function notificarFechamento(int $chamadoId): void
-    {
-        // idem
+        return (int) $this->db->lastInsertId();
     }
 
     private function obterUltimoCheckpoint(): DateTimeImmutable

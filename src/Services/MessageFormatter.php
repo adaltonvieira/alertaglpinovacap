@@ -6,7 +6,7 @@ use App\Models\Chamado;
 
 /**
  * Formata as mensagens enviadas ao Telegram em HTML, seguindo o layout
- * de referência do briefing, mas com prazos e criticidades derivados
+ * de referÃªncia do briefing, mas com prazos e criticidades derivados
  * do TR (via SlaEngine), nunca de valores fixos no template.
  */
 class MessageFormatter
@@ -20,9 +20,9 @@ class MessageFormatter
         $tempoRestante = $this->formatarTempoRestante($c->prazoResolucao);
 
         return
-            "🚨 <b>NOVO CHAMADO</b>\n\n" .
+            "ðŸš¨ <b>NOVO CHAMADO</b>\n\n" .
             "Chamado: <b>#{$c->numero}</b>\n\n" .
-            "Título:\n{$c->titulo}\n\n" .
+            "TÃ­tulo:\n{$c->titulo}\n\n" .
             "Categoria:\n{$c->categoria}\n\n" .
             "Solicitante:\n{$c->solicitanteNome}\n\n" .
             "Local:\n{$c->localidadeNome}\n\n" .
@@ -30,8 +30,8 @@ class MessageFormatter
             "Data e hora:\n" . $c->abertoEm->format('d/m/Y H:i') . "\n\n" .
             "Prioridade:\n{$this->sla->emojiCriticidade($c->criticidade)} {$this->sla->labelCriticidade($c->criticidade)}\n\n" .
             "Impacto:\n{$this->sla->emojiImpacto($c->impacto)} " . ucfirst(strtolower($c->impacto)) . "\n\n" .
-            "Urgência:\n{$this->sla->emojiUrgencia($c->urgencia)} " . ucfirst(strtolower($c->urgencia)) . "\n\n" .
-            "SLA (NMS conforme Termo de Referência):\n" . $this->descricaoPrazoResolucao($c) . "\n\n" .
+            "UrgÃªncia:\n{$this->sla->emojiUrgencia($c->urgencia)} " . ucfirst(strtolower($c->urgencia)) . "\n\n" .
+            "SLA (NMS conforme Termo de ReferÃªncia):\n" . $this->descricaoPrazoResolucao($c) . "\n\n" .
             "Tempo restante:\n{$tempoRestante}\n\n" .
             "Clique para abrir:\n{$c->linkGlpi}";
     }
@@ -41,8 +41,8 @@ class MessageFormatter
         $tempoRestante = $this->formatarTempoRestante($c->prazoResolucao);
 
         return
-            "📌 <b>CHAMADO ATRIBUÍDO A VOCÊ</b>\n\n" .
-            "Técnico: <b>{$nomeTecnico}</b>\n" .
+            "ðŸ“Œ <b>CHAMADO ATRIBUÃDO A VOCÃŠ</b>\n\n" .
+            "TÃ©cnico: <b>{$nomeTecnico}</b>\n" .
             "Chamado: #{$c->numero}\n" .
             "Prioridade: {$this->sla->emojiCriticidade($c->criticidade)} {$this->sla->labelCriticidade($c->criticidade)}\n" .
             "SLA: " . $this->descricaoPrazoResolucao($c) . "\n" .
@@ -55,10 +55,10 @@ class MessageFormatter
     public function reatribuicao(Chamado $c, string $tecnicoAnterior, string $tecnicoNovo, ?string $motivo): string
     {
         $msg =
-            "🔄 <b>CHAMADO REATRIBUÍDO</b>\n\n" .
+            "ðŸ”„ <b>CHAMADO REATRIBUÃDO</b>\n\n" .
             "Chamado: #{$c->numero}\n" .
-            "Técnico anterior: {$tecnicoAnterior}\n" .
-            "Novo técnico: {$tecnicoNovo}\n" .
+            "TÃ©cnico anterior: {$tecnicoAnterior}\n" .
+            "Novo tÃ©cnico: {$tecnicoNovo}\n" .
             "Data: " . (new \DateTimeImmutable())->format('d/m/Y H:i') . "\n";
 
         if ($motivo) {
@@ -71,14 +71,14 @@ class MessageFormatter
     public function alteracaoPrioridade(Chamado $c, array $antes): string
     {
         return
-            "⚠️ <b>ALTERAÇÃO DE PRIORIDADE</b>\n\n" .
+            "âš ï¸ <b>ALTERAÃ‡ÃƒO DE PRIORIDADE</b>\n\n" .
             "Chamado: #{$c->numero}\n\n" .
             "Antes:\n" .
-            "  Urgência: {$antes['urgencia']}\n" .
+            "  UrgÃªncia: {$antes['urgencia']}\n" .
             "  Impacto: {$antes['impacto']}\n" .
             "  Prioridade: {$antes['criticidade']}\n\n" .
             "Agora:\n" .
-            "  Urgência: {$this->sla->emojiUrgencia($c->urgencia)} {$c->urgencia}\n" .
+            "  UrgÃªncia: {$this->sla->emojiUrgencia($c->urgencia)} {$c->urgencia}\n" .
             "  Impacto: {$this->sla->emojiImpacto($c->impacto)} {$c->impacto}\n" .
             "  Prioridade: {$this->sla->emojiCriticidade($c->criticidade)} {$c->criticidade}\n\n" .
             "Novo SLA: " . $this->descricaoPrazoResolucao($c) . "\n" .
@@ -88,12 +88,12 @@ class MessageFormatter
     public function alertaVencimento(Chamado $c, int $percentualConsumido): string
     {
         $tempoRestante = $this->formatarTempoRestante($c->prazoResolucao);
-        $emoji = $percentualConsumido >= 90 ? '🔴' : ($percentualConsumido >= 75 ? '🟠' : '🟡');
+        $emoji = $percentualConsumido >= 90 ? 'ðŸ”´' : ($percentualConsumido >= 75 ? 'ðŸŸ ' : 'ðŸŸ¡');
 
         return
-            "{$emoji} <b>ATENÇÃO — SLA PRÓXIMO DO VENCIMENTO</b>\n\n" .
+            "{$emoji} <b>ATENÃ‡ÃƒO â€” SLA PRÃ“XIMO DO VENCIMENTO</b>\n\n" .
             "Chamado: #{$c->numero}\n" .
-            "Já consumido: {$percentualConsumido}% do prazo\n" .
+            "JÃ¡ consumido: {$percentualConsumido}% do prazo\n" .
             "Tempo restante: {$tempoRestante}\n" .
             "Prioridade: {$this->sla->emojiCriticidade($c->criticidade)} {$this->sla->labelCriticidade($c->criticidade)}\n\n" .
             "Link: {$c->linkGlpi}";
@@ -102,48 +102,48 @@ class MessageFormatter
     public function chamadoVencido(Chamado $c): string
     {
         return
-            "🔴🔥 <b>CHAMADO COM SLA VENCIDO</b>\n\n" .
+            "ðŸ”´ðŸ”¥ <b>CHAMADO COM SLA VENCIDO</b>\n\n" .
             "Chamado: #{$c->numero}\n" .
             "Prazo previsto: {$c->prazoResolucao->format('d/m/Y H:i')}\n" .
             "Prioridade: {$this->sla->emojiCriticidade($c->criticidade)} {$this->sla->labelCriticidade($c->criticidade)}\n\n" .
-            "⚠️ Este chamado está fora do NMS definido no Termo de Referência.\n" .
+            "âš ï¸ Este chamado estÃ¡ fora do NMS definido no Termo de ReferÃªncia.\n" .
             "Link: {$c->linkGlpi}";
     }
 
     public function lembreteVencido(Chamado $c, int $minutosVencido): string
     {
         return
-            "🔴 <b>LEMBRETE — CHAMADO AINDA VENCIDO</b>\n\n" .
+            "ðŸ”´ <b>LEMBRETE â€” CHAMADO AINDA VENCIDO</b>\n\n" .
             "Chamado: #{$c->numero}\n" .
-            "Vencido há: " . $this->formatarMinutos($minutosVencido) . "\n\n" .
+            "Vencido hÃ¡: " . $this->formatarMinutos($minutosVencido) . "\n\n" .
             "Link: {$c->linkGlpi}";
     }
 
     public function chamadoResolvido(Chamado $c, string $resolvidoPor, int $tempoGastoMinutos): string
     {
         $prazoMin = $this->sla->prazoResolucaoMinutos($c->tipo, $c->criticidade);
-        $situacao = $tempoGastoMinutos <= $prazoMin ? '✅ Dentro do SLA' : '⚠️ Fora do SLA';
+        $situacao = $tempoGastoMinutos <= $prazoMin ? 'âœ… Dentro do SLA' : 'âš ï¸ Fora do SLA';
 
         return
-            "✅ <b>CHAMADO RESOLVIDO</b>\n\n" .
+            "âœ… <b>CHAMADO RESOLVIDO</b>\n\n" .
             "Chamado: #{$c->numero}\n" .
             "Resolvido por: {$resolvidoPor}\n" .
             "Tempo gasto: " . $this->formatarMinutos($tempoGastoMinutos) . "\n" .
             "SLA previsto: " . $this->formatarMinutos($prazoMin) . "\n" .
-            "Situação: {$situacao}\n\n" .
+            "SituaÃ§Ã£o: {$situacao}\n\n" .
             "Link: {$c->linkGlpi}";
     }
 
     public function chamadoFechado(Chamado $c): string
     {
-        return "🔒 <b>CHAMADO ENCERRADO</b>\n\nChamado: #{$c->numero}\nLink: {$c->linkGlpi}";
+        return "ðŸ”’ <b>CHAMADO ENCERRADO</b>\n\nChamado: #{$c->numero}\nLink: {$c->linkGlpi}";
     }
 
     private function descricaoPrazoResolucao(Chamado $c): string
     {
         $minutos = $this->sla->prazoResolucaoMinutos($c->tipo, $c->criticidade);
         return $this->formatarMinutos($minutos) .
-            " (NMS " . ($c->tipo === 'INCIDENTE' ? 'Incidente' : 'Requisição') .
+            " (NMS " . ($c->tipo === 'INCIDENTE' ? 'Incidente' : 'RequisiÃ§Ã£o') .
             " / TR ANEXO IV)";
     }
 
@@ -153,7 +153,7 @@ class MessageFormatter
         $diffSegundos = $prazo->getTimestamp() - $agora->getTimestamp();
 
         if ($diffSegundos <= 0) {
-            return 'VENCIDO há ' . $this->formatarMinutos((int) (abs($diffSegundos) / 60));
+            return 'VENCIDO hÃ¡ ' . $this->formatarMinutos((int) (abs($diffSegundos) / 60));
         }
 
         return $this->formatarMinutos((int) ($diffSegundos / 60));
