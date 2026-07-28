@@ -4,7 +4,7 @@ services:
   app:
     build:
       context: .
-      dockerfile: docker/Dockerfile
+      dockerfile: Dockerfile
     container_name: glpi_telegram_app
     restart: unless-stopped
     env_file: .env
@@ -22,7 +22,7 @@ services:
   worker-sync:
     build:
       context: .
-      dockerfile: docker/Dockerfile
+      dockerfile: Dockerfile
     container_name: glpi_telegram_worker_sync
     restart: unless-stopped
     env_file: .env
@@ -38,7 +38,7 @@ services:
   worker-sla:
     build:
       context: .
-      dockerfile: docker/Dockerfile
+      dockerfile: Dockerfile
     container_name: glpi_telegram_worker_sla
     restart: unless-stopped
     env_file: .env
@@ -54,7 +54,7 @@ services:
   worker-notify:
     build:
       context: .
-      dockerfile: docker/Dockerfile
+      dockerfile: Dockerfile
     container_name: glpi_telegram_worker_notify
     restart: unless-stopped
     env_file: .env
