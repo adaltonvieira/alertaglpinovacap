@@ -15,6 +15,7 @@ class WebhookHandler
         private GlpiClient $glpi,
         private TelegramClient $telegram,
         private SlaEngine $sla,
+        private BotCommands $botCommands,
     ) {
     }
 
@@ -22,6 +23,11 @@ class WebhookHandler
     {
         if (isset($update['callback_query'])) {
             $this->processarCallback($update['callback_query']);
+            return;
+        }
+
+        if (isset($update['message']['text'])) {
+            $this->botCommands->processar($update['message']);
         }
     }
 
@@ -35,14 +41,14 @@ class WebhookHandler
         $chamadoId = (int) $chamadoIdStr;
 
         if ($chamadoId <= 0) {
-            $this->telegram->answerCallbackQuery($callbackId, 'Chamado invalido.', true);
+            $this->responderCallback($callbackId, 'Chamado invalido.', true);
             return;
         }
 
         $tecnico = $this->buscarTecnicoPorTelegramId($telegramUserId);
 
         if ($tecnico === null) {
-            $this->telegram->answerCallbackQuery(
+            $this->responderCallback(
                 $callbackId,
                 'Voce nao esta cadastrado como tecnico neste sistema.',
                 true
@@ -53,7 +59,7 @@ class WebhookHandler
         $chamado = $this->buscarChamado($chamadoId);
 
         if ($chamado === null) {
-            $this->telegram->answerCallbackQuery($callbackId, 'Chamado nao encontrado.', true);
+            $this->responderCallback($callbackId, 'Chamado nao encontrado.', true);
             return;
         }
 
@@ -61,7 +67,7 @@ class WebhookHandler
             'assumir' => $this->assumirChamado($callbackId, $chamado, $tecnico),
             'leitura' => $this->confirmarLeitura($callbackId, $chamado, $tecnico),
             'sla'     => $this->mostrarSla($callbackId, $chamado),
-            default   => $this->telegram->answerCallbackQuery($callbackId, 'Acao desconhecida.', true),
+            default   => $this->responderCallback($callbackId, 'Acao desconhecida.', true),
         };
     }
 
@@ -69,7 +75,7 @@ class WebhookHandler
     {
         if ($chamado->tecnicoAtualId !== null && $chamado->tecnicoAtualId !== (int) $tecnico['id']) {
             $nomeAtual = $this->buscarNomeTecnico($chamado->tecnicoAtualId);
-            $this->telegram->answerCallbackQuery(
+            $this->responderCallback(
                 $callbackId,
                 "Este chamado ja esta atribuido a {$nomeAtual}.",
                 true
@@ -78,14 +84,15 @@ class WebhookHandler
         }
 
         if ($chamado->tecnicoAtualId === (int) $tecnico['id']) {
-            $this->telegram->answerCallbackQuery($callbackId, 'Voce ja esta atribuido a este chamado.', false);
+            $this->responderCallback($callbackId, 'Voce ja esta atribuido a este chamado.', false);
             return;
         }
 
         try {
             $this->glpi->atribuirTecnico($chamado->glpiTicketId, (int) $tecnico['glpi_user_id']);
         } catch (\Throwable $e) {
-            $this->telegram->answerCallbackQuery(
+            error_log('[WebhookHandler] Falha ao atribuir tecnico no GLPI: ' . $e->getMessage());
+            $this->responderCallback(
                 $callbackId,
                 'Erro ao atribuir no GLPI. Tente novamente ou assuma direto pelo sistema.',
                 true
@@ -93,29 +100,37 @@ class WebhookHandler
             return;
         }
 
-        $this->db->prepare(
-            'UPDATE chamados SET tecnico_atual_id = :tecnico, status_glpi = :status WHERE id = :id'
-        )->execute([
-            'tecnico' => $tecnico['id'],
-            'status'  => 'atribuido',
-            'id'      => $chamado->id,
-        ]);
+        try {
+            $this->db->prepare(
+                'UPDATE chamados SET tecnico_atual_id = :tecnico, status_glpi = :status WHERE id = :id'
+            )->execute([
+                'tecnico' => $tecnico['id'],
+                'status'  => 'atribuido',
+                'id'      => $chamado->id,
+            ]);
+        } catch (\Throwable $e) {
+            error_log('[WebhookHandler] GLPI atribuido, mas falhou ao atualizar banco local: ' . $e->getMessage());
+        }
 
-        $this->telegram->answerCallbackQuery($callbackId, 'Chamado assumido com sucesso!', false);
+        $this->responderCallback($callbackId, 'Chamado assumido com sucesso!', false);
     }
 
     private function confirmarLeitura(string $callbackId, Chamado $chamado, array $tecnico): void
     {
-        $this->db->prepare(
-            'INSERT INTO confirmacoes_leitura (chamado_id, tecnico_id)
-             VALUES (:chamado_id, :tecnico_id)
-             ON DUPLICATE KEY UPDATE confirmado_em = confirmado_em'
-        )->execute([
-            'chamado_id' => $chamado->id,
-            'tecnico_id' => $tecnico['id'],
-        ]);
+        try {
+            $this->db->prepare(
+                'INSERT INTO confirmacoes_leitura (chamado_id, tecnico_id)
+                 VALUES (:chamado_id, :tecnico_id)
+                 ON DUPLICATE KEY UPDATE confirmado_em = confirmado_em'
+            )->execute([
+                'chamado_id' => $chamado->id,
+                'tecnico_id' => $tecnico['id'],
+            ]);
+        } catch (\Throwable $e) {
+            error_log('[WebhookHandler] Falha ao gravar confirmacao de leitura: ' . $e->getMessage());
+        }
 
-        $this->telegram->answerCallbackQuery($callbackId, 'Leitura confirmada.', false);
+        $this->responderCallback($callbackId, 'Leitura confirmada.', false);
     }
 
     private function mostrarSla(string $callbackId, Chamado $chamado): void
@@ -127,7 +142,16 @@ class WebhookHandler
             ? "SLA VENCIDO\nPrazo era: {$chamado->prazoResolucao->format('d/m/Y H:i')}"
             : "SLA em andamento: {$percentual}% consumido\nPrazo: {$chamado->prazoResolucao->format('d/m/Y H:i')}";
 
-        $this->telegram->answerCallbackQuery($callbackId, $texto, true);
+        $this->responderCallback($callbackId, $texto, true);
+    }
+
+    private function responderCallback(string $callbackId, string $texto, bool $showAlert): void
+    {
+        try {
+            $this->telegram->answerCallbackQuery($callbackId, $texto, $showAlert);
+        } catch (\Throwable $e) {
+            error_log('[WebhookHandler] Falha ao responder callback (nao critico): ' . $e->getMessage());
+        }
     }
 
     private function buscarTecnicoPorTelegramId(int $telegramUserId): ?array
