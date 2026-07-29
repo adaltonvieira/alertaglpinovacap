@@ -5,18 +5,6 @@ namespace App\Services;
 use DateTimeImmutable;
 use DateInterval;
 
-/**
- * Motor de SLA — calcula prazos de atendimento e resolução de chamados
- * com base exclusivamente nos parâmetros do config/sla.php, que por sua vez
- * refletem o Termo de Referência NOVACAP (ANEXO III e ANEXO IV).
- *
- * Regras aplicadas (com referência ao TR):
- *  - TR ANEXO IV Tabela XVI: prazo de INÍCIO de atendimento por criticidade.
- *  - TR ANEXO IV Tabela XIX: prazo máximo de RESOLUÇÃO de incidentes.
- *  - TR ANEXO IV Tabela XX: tempo médio e prazo máximo de requisições.
- *  - TR ANEXO IV item 3.11: prazos contados em horas úteis (dentro da janela
- *    de atendimento aplicável à equipe responsável).
- */
 class SlaEngine
 {
     private array $sla;
@@ -26,20 +14,12 @@ class SlaEngine
         $this->sla = $slaConfig ?? require dirname(__DIR__, 2) . '/config/sla.php';
     }
 
-    /**
-     * Retorna o prazo (em minutos) para INÍCIO de atendimento, conforme
-     * TR ANEXO IV Tabela XVI.
-     */
     public function prazoInicioAtendimentoMinutos(string $criticidade): int
     {
         return $this->sla['criticidade_atendimento'][$criticidade]['prazo_inicio_minutos']
             ?? $this->sla['criticidade_atendimento']['MEDIA']['prazo_inicio_minutos'];
     }
 
-    /**
-     * Retorna o prazo (em minutos) para RESOLUÇÃO, diferenciando
-     * Incidente (Tabela XIX) de Requisição (Tabela XX - prazo máximo).
-     */
     public function prazoResolucaoMinutos(string $tipo, string $criticidade): int
     {
         if ($tipo === 'INCIDENTE') {
@@ -56,20 +36,11 @@ class SlaEngine
         return $this->sla['requisicao_sla'][$criticidade]['tempo_medio_min'] ?? null;
     }
 
-    /**
-     * Calcula a criticidade "consolidada" do chamado a partir da matriz
-     * Impacto x Urgência (TR ANEXO IV item 6.10.6 - Matriz de Prioridade).
-     * Implementação: maior peso relativo entre impacto e urgência define a
-     * criticidade, com regra de corte alinhada às 4 faixas do TR
-     * (Crítica/Alta/Média/Baixa) usadas nas tabelas de NMS.
-     */
     public function calcularCriticidade(string $impacto, string $urgencia): string
     {
         $pesoImpacto  = $this->sla['impacto'][$impacto]['peso']  ?? 2;
         $pesoUrgencia = $this->sla['urgencia'][$urgencia]['peso'] ?? 2;
 
-        // Média ponderada (urgência pesa um pouco mais, pois define o tempo
-        // de restabelecimento exigido pelo negócio — TR item 6.9.2)
         $score = ($pesoImpacto * 1.0 + $pesoUrgencia * 1.5) / 2.5;
 
         return match (true) {
@@ -80,11 +51,6 @@ class SlaEngine
         };
     }
 
-    /**
-     * Calcula o instante-limite (DateTimeImmutable) considerando se o
-     * prazo deve ser contado em horas úteis (TR item 3.11) ou em regime
-     * contínuo (24x7, aplicável à NOC — TR § 10.3).
-     */
     public function calcularPrazoLimite(
         DateTimeImmutable $inicio,
         int $minutos,
@@ -108,11 +74,6 @@ class SlaEngine
         };
     }
 
-    /**
-     * Soma minutos respeitando apenas os intervalos de dias úteis/horário
-     * definidos na janela de atendimento (simulação minuto a minuto de
-     * forma otimizada por blocos de expediente).
-     */
     private function somarMinutosUteis(
         DateTimeImmutable $inicio,
         int $minutosRestantes,
@@ -123,7 +84,7 @@ class SlaEngine
 
         while ($minutosRestantes > 0) {
             $diaSemana = strtolower($cursor->format('D'));
-            $diaSemana = substr($diaSemana, 0, 3); // mon, tue, wed...
+            $diaSemana = substr($diaSemana, 0, 3);
 
             if (!in_array($diaSemana, $diasUteis, true)) {
                 $cursor = $cursor->modify('+1 day')->setTime(
@@ -148,10 +109,10 @@ class SlaEngine
                 continue;
             }
 
-            $minutosDisponiveisHoje = ($fimExpediente->getTimestamp() - $cursor->getTimestamp()) / 60;
+            $minutosDisponiveisHoje = (int) floor(($fimExpediente->getTimestamp() - $cursor->getTimestamp()) / 60);
 
             if ($minutosRestantes <= $minutosDisponiveisHoje) {
-                return $cursor->modify("+{$minutosRestantes} minutes");
+                return $cursor->modify('+' . (int) $minutosRestantes . ' minutes');
             }
 
             $minutosRestantes -= $minutosDisponiveisHoje;
@@ -161,11 +122,6 @@ class SlaEngine
         return $cursor;
     }
 
-    /**
-     * Retorna os percentuais/limiares configurados para alertas de
-     * aproximação de vencimento (não literal do TR, mas necessário para
-     * operacionalizar o cumprimento das metas do TR item 3.17).
-     */
     public function limiaresAlertaPercentual(): array
     {
         return $this->sla['alertas_vencimento']['percentuais'];
@@ -186,20 +142,19 @@ class SlaEngine
         return $this->sla['escalonamento']['sem_atribuicao_minutos'][$criticidade] ?? 30;
     }
 
-    /** Emoji/label helpers usados na formatação das mensagens do Telegram */
     public function emojiCriticidade(string $criticidade): string
     {
-        return $this->sla['criticidade_atendimento'][$criticidade]['emoji'] ?? '⚪';
+        return $this->sla['criticidade_atendimento'][$criticidade]['emoji'] ?? '?';
     }
 
     public function emojiImpacto(string $impacto): string
     {
-        return $this->sla['impacto'][$impacto]['emoji'] ?? '⚪';
+        return $this->sla['impacto'][$impacto]['emoji'] ?? '?';
     }
 
     public function emojiUrgencia(string $urgencia): string
     {
-        return $this->sla['urgencia'][$urgencia]['emoji'] ?? '⚪';
+        return $this->sla['urgencia'][$urgencia]['emoji'] ?? '?';
     }
 
     public function labelCriticidade(string $criticidade): string

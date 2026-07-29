@@ -10,14 +10,14 @@ use PDO;
 use DateTimeImmutable;
 
 /**
- * Worker executado a cada 1 minuto (ver docker/crontab) responsável por:
- *  - Detectar chamados críticos sem técnico atribuído há tempo excessivo
- *    (escalonamento automático — TR item 3.17 / cumprimento de NMS).
- *  - Disparar alertas de aproximação de vencimento (50/75/90/95% do prazo).
- *  - Disparar alerta de SLA vencido e lembretes periódicos enquanto
+ * Worker executado a cada 1 minuto (ver docker/crontab) responsÃ¡vel por:
+ *  - Detectar chamados crÃ­ticos sem tÃ©cnico atribuÃ­do hÃ¡ tempo excessivo
+ *    (escalonamento automÃ¡tico â€” TR item 3.17 / cumprimento de NMS).
+ *  - Disparar alertas de aproximaÃ§Ã£o de vencimento (50/75/90/95% do prazo).
+ *  - Disparar alerta de SLA vencido e lembretes periÃ³dicos enquanto
  *    permanecer vencido (15min / 30min / 1h, conforme especificado).
  *
- * Todos os limiares vêm de config/sla.php, refletindo o TR.
+ * Todos os limiares vÃªm de config/sla.php, refletindo o TR.
  */
 class SlaMonitorWorker
 {
@@ -53,7 +53,7 @@ class SlaMonitorWorker
                 }
             }
 
-            // Reforço nos últimos minutos absolutos, independente do %
+            // ReforÃ§o nos Ãºltimos minutos absolutos, independente do %
             $minutosRestantes = (int) (($chamado->prazoResolucao->getTimestamp() - time()) / 60);
             foreach ($this->sla->minutosFinaisAlerta() as $minutosAlerta) {
                 if ($minutosRestantes > 0 && $minutosRestantes <= $minutosAlerta) {
@@ -85,13 +85,13 @@ class SlaMonitorWorker
             );
         }
 
-        // Lembretes recorrentes para chamados já vencidos e ainda abertos
+        // Lembretes recorrentes para chamados jÃ¡ vencidos e ainda abertos
         foreach ($this->chamadosVencidosAbertos() as $row) {
             $chamado = $this->hidratar($row);
             $minutosVencido = (int) ((time() - $chamado->prazoResolucao->getTimestamp()) / 60);
 
             $cadencia = $this->sla->cadenciaLembretePosVencimentoMinutos();
-            $ultimaCadencia = end($cadencia); // 60min = cadência estável após o último marco
+            $ultimaCadencia = end($cadencia); // 60min = cadÃªncia estÃ¡vel apÃ³s o Ãºltimo marco
 
             $deveNotificar = in_array($minutosVencido, $cadencia, true)
                 || ($minutosVencido > $ultimaCadencia && $minutosVencido % $ultimaCadencia === 0);
@@ -108,9 +108,9 @@ class SlaMonitorWorker
     }
 
     /**
-     * Escalonamento automático: chamado crítico sem técnico atribuído por
-     * tempo excessivo é encaminhado ao grupo "Novo Chamado" com destaque e,
-     * opcionalmente, ao supervisor da equipe responsável.
+     * Escalonamento automÃ¡tico: chamado crÃ­tico sem tÃ©cnico atribuÃ­do por
+     * tempo excessivo Ã© encaminhado ao grupo "Novo Chamado" com destaque e,
+     * opcionalmente, ao supervisor da equipe responsÃ¡vel.
      */
     private function verificarEscalonamentoSemAtribuicao(): void
     {
@@ -129,8 +129,8 @@ class SlaMonitorWorker
                     $chamado->id,
                     $this->chatGrupoEscalonamento($chamado),
                     'escalonamento_sem_atribuicao',
-                    "⏫ <b>ESCALONAMENTO — SEM TÉCNICO ATRIBUÍDO</b>\n\n" .
-                    "Chamado #{$chamado->numero} está há {$minutosSemAtribuicao}min sem atribuição " .
+                    "â« <b>ESCALONAMENTO â€” SEM TÃ‰CNICO ATRIBUÃDO</b>\n\n" .
+                    "Chamado #{$chamado->numero} estÃ¡ hÃ¡ {$minutosSemAtribuicao}min sem atribuiÃ§Ã£o " .
                     "(limite para prioridade {$this->sla->labelCriticidade($chamado->criticidade)}: {$limiar}min).\n\n" .
                     "Link: {$chamado->linkGlpi}"
                 );
@@ -176,7 +176,7 @@ class SlaMonitorWorker
 
     private function hidratar(array $row): Chamado
     {
-        $row['link_glpi'] = getenv('GLPI_BASE_URL') . '/front/ticket.form.php?id=' . $row['glpi_ticket_id'];
+        $row['link_glpi'] = GlpiUrl::ticketLink((int) $row['glpi_ticket_id']);
         return Chamado::fromArray($row);
     }
 

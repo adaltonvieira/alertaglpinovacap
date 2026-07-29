@@ -68,11 +68,18 @@ class GlpiSyncWorker
 
         $statusGlpi = $this->mapearStatus((int) ($ticket['status'] ?? 1));
         $tecnicoAtualId = $this->resolverTecnicoAtribuido($ticketId);
-        $solicitanteNome = $this->resolverNomeSolicitante($ticketId);
+        $solicitanteNome = $this->resolverNomeSolicitante($ticket);
+        $localizacao = $this->resolverLocalizacao($ticket);
+        if (isset($ticket['itilcategories_id'])) {
+            $ticket['itilcategories_id'] = html_entity_decode((string) $ticket['itilcategories_id'], ENT_QUOTES, 'UTF-8');
+        }
+        if (isset($ticket['name'])) {
+            $ticket['name'] = html_entity_decode((string) $ticket['name'], ENT_QUOTES, 'UTF-8');
+        }
 
         if ($existente === null) {
             $chamadoId = $this->inserirChamado($ticket, $ticketId, $tipo, $impacto, $urgencia, $criticidade,
-                $equipe, $statusGlpi, $abertoEm, $prazoInicio, $prazoResolucao, $tecnicoAtualId);
+                $equipe, $statusGlpi, $abertoEm, $prazoInicio, $prazoResolucao, $tecnicoAtualId, $localizacao);
 
             $this->notificarNovoChamado($chamadoId, $tecnicoAtualId);
             return;
@@ -87,8 +94,9 @@ class GlpiSyncWorker
             'prazo_resolucao'  => $prazoResolucao,
             'ticket'           => $ticket,
             'titulo'           => $ticket['name'] ?? $existente['titulo'],
-            'categoria'        => $this->limparTextoGlpi($ticket['itilcategories_id'] ?? null) ?? $existente['categoria'],
+            'categoria'        => $ticket['itilcategories_id'] ?? $existente['categoria'],
             'solicitante_nome' => $solicitanteNome ?? $existente['solicitante_nome'],
+            'unidade'          => $localizacao ?? $existente['unidade'],
         ]);
     }
 
@@ -107,6 +115,7 @@ class GlpiSyncWorker
             'UPDATE chamados SET impacto = :impacto, urgencia = :urgencia, criticidade = :criticidade,
                 status_glpi = :status, tecnico_atual_id = :tecnico, prazo_resolucao = :prazo,
                 titulo = :titulo, categoria = :categoria, solicitante_nome = :solicitante,
+                unidade = :unidade,
                 resolvido_em = IF(:resolvido = 1, NOW(), resolvido_em),
                 fechado_em = IF(:fechado = 1, NOW(), fechado_em)
              WHERE id = :id'
@@ -120,6 +129,7 @@ class GlpiSyncWorker
             'titulo'     => $depois['titulo'] ?? $antes['titulo'],
             'categoria'  => $depois['categoria'] ?? $antes['categoria'],
             'solicitante'=> $depois['solicitante_nome'] ?? $antes['solicitante_nome'],
+            'unidade'    => $depois['unidade'] ?? $antes['unidade'],
             'resolvido'  => $foiResolvido ? 1 : 0,
             'fechado'    => $foiFechado ? 1 : 0,
             'id'         => $chamadoId,
@@ -152,6 +162,13 @@ class GlpiSyncWorker
         }
 
         if ($tecnicoId === null) {
+            // Política acordada com a NOVACAP (jul/2026): o grupo só recebe
+            // alerta de chamados novos com prioridade Média, Alta ou Crítica.
+            // Chamados de prioridade Baixa não geram notificação no grupo.
+            if ($chamado->criticidade === 'BAIXA') {
+                return;
+            }
+
             $this->dispatcher->enfileirar(
                 $chamadoId,
                 $this->chatGrupoPorEquipe($chamado->equipeAtual, 'novo_chamado'),
@@ -166,9 +183,7 @@ class GlpiSyncWorker
             return;
         }
 
-        $texto = $atribuicaoDireta
-            ? $this->formatter->chamadoAtribuido($chamado, $tecnico['nome'])
-            : $this->formatter->novoChamado($chamado);
+        $texto = $this->formatter->chamadoAtribuido($chamado, $tecnico['nome']);
 
         $this->dispatcher->enfileirar(
             $chamadoId,
@@ -350,37 +365,37 @@ class GlpiSyncWorker
         };
     }
 
-    private function limparTextoGlpi(?string $texto): ?string
+    private function resolverNomeSolicitante(array $ticket): ?string
     {
-        if ($texto === null) {
+        $recipientId = (int) ($ticket['users_id_recipient'] ?? 0);
+        if ($recipientId <= 0) {
             return null;
         }
 
-        return html_entity_decode($texto, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-    }
-
-    private function resolverNomeSolicitante(int $ticketId): ?string
-    {
         try {
-            $vinculos = $this->glpi->getTicketUsers($ticketId);
+            $user = $this->glpi->getUser($recipientId);
         } catch (\Throwable $e) {
             return null;
         }
 
-        foreach ($vinculos as $vinculo) {
-            if ((int) ($vinculo['type'] ?? 0) === 1 && !empty($vinculo['users_id'])) {
-                try {
-                    $user = $this->glpi->getUser((int) $vinculo['users_id']);
-                } catch (\Throwable $e) {
-                    return null;
-                }
+        $nome = trim(($user['firstname'] ?? '') . ' ' . ($user['realname'] ?? ''));
+        return $nome !== '' ? $nome : ($user['name'] ?? null);
+    }
 
-                $nome = trim(($user['firstname'] ?? '') . ' ' . ($user['realname'] ?? ''));
-                return $nome !== '' ? $nome : ($user['name'] ?? null);
-            }
+    /**
+     * Resolve o nome da localização do chamado. Como getTicket() já é
+     * chamado com expand_dropdowns=true, o campo locations_id já vem como
+     * texto (nome/sigla da localidade), não como ID numérico.
+     */
+    private function resolverLocalizacao(array $ticket): ?string
+    {
+        $valor = $ticket['locations_id'] ?? null;
+
+        if ($valor === null || $valor === '' || $valor === '0') {
+            return null;
         }
 
-        return null;
+        return html_entity_decode((string) $valor, ENT_QUOTES, 'UTF-8');
     }
 
     private function mapearImpacto(int $glpiImpact): string
@@ -453,15 +468,16 @@ class GlpiSyncWorker
     private function inserirChamado(
         array $ticket, int $ticketId, string $tipo, string $impacto, string $urgencia,
         string $criticidade, string $equipe, string $status, DateTimeImmutable $abertoEm,
-        DateTimeImmutable $prazoInicio, DateTimeImmutable $prazoResolucao, ?int $tecnicoId
+        DateTimeImmutable $prazoInicio, DateTimeImmutable $prazoResolucao, ?int $tecnicoId,
+        ?string $localizacao = null
     ): int {
         $this->db->prepare(
             'INSERT INTO chamados
-                (glpi_ticket_id, numero, titulo, tipo, categoria, solicitante_nome,
+                (glpi_ticket_id, numero, titulo, tipo, categoria, solicitante_nome, unidade,
                  impacto, urgencia, criticidade, equipe_atual, tecnico_atual_id, status_glpi,
                  prazo_inicio_atendimento, prazo_resolucao, aberto_em)
              VALUES
-                (:tid, :numero, :titulo, :tipo, :categoria, :solicitante,
+                (:tid, :numero, :titulo, :tipo, :categoria, :solicitante, :unidade,
                  :impacto, :urgencia, :criticidade, :equipe, :tecnico, :status,
                  :prazo_inicio, :prazo_resolucao, :aberto_em)'
         )->execute([
@@ -469,8 +485,9 @@ class GlpiSyncWorker
             'numero'      => (string) $ticketId,
             'titulo'      => $ticket['name'] ?? '(sem titulo)',
             'tipo'        => $tipo,
-            'categoria'   => $this->limparTextoGlpi($ticket['itilcategories_id'] ?? null),
-            'solicitante' => $this->resolverNomeSolicitante($ticketId),
+            'categoria'   => $ticket['itilcategories_id'] ?? null,
+            'solicitante' => $this->resolverNomeSolicitante($ticket),
+            'unidade'     => $localizacao,
             'impacto'     => $impacto,
             'urgencia'    => $urgencia,
             'criticidade' => $criticidade,

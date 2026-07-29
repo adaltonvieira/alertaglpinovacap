@@ -11,9 +11,6 @@ services:
     depends_on:
       - db
       - redis
-    volumes:
-      - ./:/var/www/html
-      - ./logs:/var/www/html/logs
     ports:
       - "8080:80"
     networks:
@@ -30,8 +27,6 @@ services:
     depends_on:
       - db
       - redis
-    volumes:
-      - ./:/var/www/html
     networks:
       - glpi_telegram_net
 
@@ -46,8 +41,6 @@ services:
     depends_on:
       - db
       - redis
-    volumes:
-      - ./:/var/www/html
     networks:
       - glpi_telegram_net
 
@@ -62,8 +55,6 @@ services:
     depends_on:
       - db
       - redis
-    volumes:
-      - ./:/var/www/html
     networks:
       - glpi_telegram_net
 
@@ -80,7 +71,7 @@ services:
       - db_data:/var/lib/mysql
       - ./database/migrations:/docker-entrypoint-initdb.d
     ports:
-      - "3306:3306"
+      - "3307:3306"
     networks:
       - glpi_telegram_net
 
@@ -94,8 +85,6 @@ services:
     networks:
       - glpi_telegram_net
 
-  # Opcional — habilitar apenas se optar por RabbitMQ em vez de filas Redis
-  # para maior robustez em ambientes de alto volume.
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: glpi_telegram_rabbitmq
