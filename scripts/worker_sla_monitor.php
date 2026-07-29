@@ -31,10 +31,13 @@ $dispatcher = new NotificationDispatcher($db, $redis, $telegram);
 
 $worker = new SlaMonitorWorker($db, $sla, $formatter, $dispatcher);
 
-try {
-    $worker->executar();
-    fwrite(STDOUT, '[' . date('Y-m-d H:i:s') . "] Monitoramento de SLA concluído.\n");
-} catch (\Throwable $e) {
-    fwrite(STDERR, '[' . date('Y-m-d H:i:s') . '] ERRO: ' . $e->getMessage() . "\n");
-    exit(1);
+while (true) {
+    try {
+        $worker->executar();
+        fwrite(STDOUT, '[' . date('Y-m-d H:i:s') . "] Monitoramento de SLA concluido.\n");
+    } catch (\Throwable $e) {
+        fwrite(STDERR, '[' . date('Y-m-d H:i:s') . '] ERRO: ' . $e->getMessage() . "\n");
+    }
+
+    sleep(60);
 }

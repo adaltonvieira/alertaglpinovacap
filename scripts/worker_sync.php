@@ -35,10 +35,13 @@ $dispatcher = new NotificationDispatcher($db, $redis, $telegram);
 
 $worker = new GlpiSyncWorker($glpi, $db, $sla, $formatter, $dispatcher, $glpiConfig);
 
-try {
-    $worker->executar();
-    fwrite(STDOUT, '[' . date('Y-m-d H:i:s') . "] Sincronização concluída.\n");
-} catch (\Throwable $e) {
-    fwrite(STDERR, '[' . date('Y-m-d H:i:s') . '] ERRO: ' . $e->getMessage() . "\n");
-    exit(1);
+while (true) {
+    try {
+        $worker->executar();
+        fwrite(STDOUT, '[' . date('Y-m-d H:i:s') . "] Sincronizacao concluida.\n");
+    } catch (\Throwable $e) {
+        fwrite(STDERR, '[' . date('Y-m-d H:i:s') . '] ERRO: ' . $e->getMessage() . "\n");
+    }
+
+    sleep(20);
 }

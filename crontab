@@ -1,8 +1,6 @@
-# Sincronizacao com GLPI (polling otimizado) - a cada 1 minuto
-* * * * * root php /var/www/html/scripts/worker_sync.php >> /var/www/html/logs/sync.log 2>&1
-
-# Monitoramento de SLA (alertas de vencimento, escalonamento) - a cada 1 minuto
-* * * * * root php /var/www/html/scripts/worker_sla_monitor.php >> /var/www/html/logs/sla.log 2>&1
+# worker_sync.php e worker_sla_monitor.php NAO estao mais aqui: rodam em
+# loop continuo dentro dos seus proprios containers (worker-sync,
+# worker-sla), nao dependem mais do cron.
 
 # Resumo diario para tecnicos as 08:00
 0 8 * * 1-5 root php /var/www/html/scripts/report_resumo_diario_tecnicos.php >> /var/www/html/logs/reports.log 2>&1

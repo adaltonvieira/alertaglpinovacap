@@ -13,34 +13,38 @@ class MessageFormatter
     public function novoChamado(Chamado $c): string
     {
         $tempoRestante = $this->formatarTempoRestante($c->prazoResolucao);
+        $slaTotal = $this->formatarMinutos($this->sla->prazoResolucaoMinutos($c->tipo, $c->criticidade));
 
         return
-            "\u{1f6a8} <b>NOVO CHAMADO</b>\n\n" .
-            "Chamado: <b>#{$c->numero}</b>\n\n" .
-            "T\u{ed}tulo:\n{$c->titulo}\n\n" .
-            "Categoria:\n" . ($c->categoria ?: '-') . "\n\n" .
-            "Solicitante:\n" . ($c->solicitanteNome ?: '-') . "\n\n" .
-            "Data e hora:\n" . $c->abertoEm->format('d/m/Y H:i') . "\n\n" .
-            "Prioridade:\n{$this->sla->emojiCriticidade($c->criticidade)} {$this->sla->labelCriticidade($c->criticidade)}\n\n" .
-            "SLA (NMS conforme Termo de Refer\u{ea}ncia):\n" . $this->descricaoPrazoResolucao($c) . "\n\n" .
-            "Tempo restante:\n{$tempoRestante}\n\n" .
-            "Clique para abrir:\n{$c->linkGlpi}";
+            "\u{1f514} <b>NOVO CHAMADO</b>\n\n" .
+            "\u{1f4ce} <b>#{$c->numero}</b>\n" .
+            "\u{1f4dd} {$c->titulo}\n\n" .
+            "\u{1f4c1} <b>Categoria</b>\n" . ($c->categoria ?: '-') . "\n\n" .
+            "{$this->sla->emojiCriticidade($c->criticidade)} <b>Prioridade:</b> {$this->sla->labelCriticidade($c->criticidade)}\n" .
+            "\u{1f3af} <b>SLA:</b> {$slaTotal}\n" .
+            "\u{23f0} <b>Vence em:</b> {$tempoRestante}\n\n" .
+            "\u{1f465} <b>Grupo Respons\u{e1}vel</b>\n{$this->equipeLabel($c->equipeAtual)}\n\n" .
+            "\u{1f517} <b>Link:</b> {$c->linkGlpi}";
     }
 
     public function chamadoAtribuido(Chamado $c, string $nomeTecnico): string
     {
         $tempoRestante = $this->formatarTempoRestante($c->prazoResolucao);
+        $slaTotal = $this->formatarMinutos($this->sla->prazoResolucaoMinutos($c->tipo, $c->criticidade));
+        $localizacao = $c->unidade ?: '-';
 
         return
             "\u{1f4cc} <b>CHAMADO ATRIBU\u{cd}DO A VOC\u{ca}</b>\n\n" .
-            "T\u{e9}cnico: <b>{$nomeTecnico}</b>\n" .
-            "Chamado: #{$c->numero}\n" .
-            "Prioridade: {$this->sla->emojiCriticidade($c->criticidade)} {$this->sla->labelCriticidade($c->criticidade)}\n" .
-            "SLA: " . $this->descricaoPrazoResolucao($c) . "\n" .
-            "Tempo restante: {$tempoRestante}\n" .
-            "Categoria: {$c->categoria}\n" .
-            "Solicitante: {$c->solicitanteNome}\n\n" .
-            "Link: {$c->linkGlpi}";
+            "\u{1f464} <b>T\u{e9}cnico:</b> {$nomeTecnico}\n\n" .
+            "\u{1f4ce} <b>#{$c->numero}</b>\n" .
+            "\u{1f4dd} {$c->titulo}\n\n" .
+            "\u{1f464} <b>Requerente:</b> {$c->solicitanteNome}\n" .
+            "\u{1f3e2} <b>Localiza\u{e7}\u{e3}o:</b> {$localizacao}\n\n" .
+            "\u{1f4c1} <b>Categoria</b>\n{$c->categoria}\n\n" .
+            "{$this->sla->emojiCriticidade($c->criticidade)} <b>Prioridade:</b> {$this->sla->labelCriticidade($c->criticidade)}\n" .
+            "\u{1f3af} <b>SLA:</b> {$slaTotal}\n" .
+            "\u{23f0} <b>Restante:</b> {$tempoRestante}\n\n" .
+            "\u{1f517} <b>Link:</b> {$c->linkGlpi}";
     }
 
     public function reatribuicao(Chamado $c, string $tecnicoAnterior, string $tecnicoNovo, ?string $motivo): string
@@ -134,8 +138,19 @@ class MessageFormatter
     {
         $minutos = $this->sla->prazoResolucaoMinutos($c->tipo, $c->criticidade);
         return $this->formatarMinutos($minutos) .
-            " (NMS " . ($c->tipo === 'INCIDENTE' ? "Requisi\u{e7}\u{e3}o" : 'Incidente') .
+            " (NMS " . ($c->tipo === 'INCIDENTE' ? 'Incidente' : "Requisi\u{e7}\u{e3}o") .
             " / TR ANEXO IV)";
+    }
+
+    private function equipeLabel(string $equipe): string
+    {
+        return match ($equipe) {
+            'N1'  => 'N1 Presencial',
+            'N2'  => 'N2 Remoto',
+            'N3'  => 'N3 Infraestrutura',
+            'NOC' => 'NOC 24x7',
+            default => $equipe,
+        };
     }
 
     private function formatarTempoRestante(\DateTimeImmutable $prazo): string
@@ -157,6 +172,10 @@ class MessageFormatter
 
         if ($horas === 0) {
             return "{$min}min";
+        }
+
+        if ($min === 0) {
+            return "{$horas}h";
         }
 
         return "{$horas}h{$min}min";

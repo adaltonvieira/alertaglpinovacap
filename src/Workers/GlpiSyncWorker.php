@@ -69,10 +69,11 @@ class GlpiSyncWorker
         $statusGlpi = $this->mapearStatus((int) ($ticket['status'] ?? 1));
         $tecnicoAtualId = $this->resolverTecnicoAtribuido($ticketId);
         $solicitanteNome = $this->resolverNomeSolicitante($ticketId);
+        $localizacao = $this->resolverLocalizacao($ticket);
 
         if ($existente === null) {
             $chamadoId = $this->inserirChamado($ticket, $ticketId, $tipo, $impacto, $urgencia, $criticidade,
-                $equipe, $statusGlpi, $abertoEm, $prazoInicio, $prazoResolucao, $tecnicoAtualId);
+                $equipe, $statusGlpi, $abertoEm, $prazoInicio, $prazoResolucao, $tecnicoAtualId, $localizacao);
 
             $this->notificarNovoChamado($chamadoId, $tecnicoAtualId);
             return;
@@ -89,6 +90,7 @@ class GlpiSyncWorker
             'titulo'           => $ticket['name'] ?? $existente['titulo'],
             'categoria'        => $this->limparTextoGlpi($ticket['itilcategories_id'] ?? null) ?? $existente['categoria'],
             'solicitante_nome' => $solicitanteNome ?? $existente['solicitante_nome'],
+            'unidade'          => $localizacao ?? $existente['unidade'],
         ]);
     }
 
@@ -107,6 +109,7 @@ class GlpiSyncWorker
             'UPDATE chamados SET impacto = :impacto, urgencia = :urgencia, criticidade = :criticidade,
                 status_glpi = :status, tecnico_atual_id = :tecnico, prazo_resolucao = :prazo,
                 titulo = :titulo, categoria = :categoria, solicitante_nome = :solicitante,
+                unidade = :unidade,
                 resolvido_em = IF(:resolvido = 1, NOW(), resolvido_em),
                 fechado_em = IF(:fechado = 1, NOW(), fechado_em)
              WHERE id = :id'
@@ -120,6 +123,7 @@ class GlpiSyncWorker
             'titulo'     => $depois['titulo'] ?? $antes['titulo'],
             'categoria'  => $depois['categoria'] ?? $antes['categoria'],
             'solicitante'=> $depois['solicitante_nome'] ?? $antes['solicitante_nome'],
+            'unidade'    => $depois['unidade'] ?? $antes['unidade'],
             'resolvido'  => $foiResolvido ? 1 : 0,
             'fechado'    => $foiFechado ? 1 : 0,
             'id'         => $chamadoId,
@@ -152,6 +156,10 @@ class GlpiSyncWorker
         }
 
         if ($tecnicoId === null) {
+            if ($chamado->criticidade === 'BAIXA') {
+                return;
+            }
+
             $this->dispatcher->enfileirar(
                 $chamadoId,
                 $this->chatGrupoPorEquipe($chamado->equipeAtual, 'novo_chamado'),
@@ -166,9 +174,7 @@ class GlpiSyncWorker
             return;
         }
 
-        $texto = $atribuicaoDireta
-            ? $this->formatter->chamadoAtribuido($chamado, $tecnico['nome'])
-            : $this->formatter->novoChamado($chamado);
+        $texto = $this->formatter->chamadoAtribuido($chamado, $tecnico['nome']);
 
         $this->dispatcher->enfileirar(
             $chamadoId,
@@ -383,6 +389,17 @@ class GlpiSyncWorker
         return null;
     }
 
+    private function resolverLocalizacao(array $ticket): ?string
+    {
+        $valor = $ticket['locations_id'] ?? null;
+
+        if ($valor === null || $valor === '' || $valor === '0') {
+            return null;
+        }
+
+        return $this->limparTextoGlpi((string) $valor);
+    }
+
     private function mapearImpacto(int $glpiImpact): string
     {
         return match ($glpiImpact) {
@@ -453,15 +470,16 @@ class GlpiSyncWorker
     private function inserirChamado(
         array $ticket, int $ticketId, string $tipo, string $impacto, string $urgencia,
         string $criticidade, string $equipe, string $status, DateTimeImmutable $abertoEm,
-        DateTimeImmutable $prazoInicio, DateTimeImmutable $prazoResolucao, ?int $tecnicoId
+        DateTimeImmutable $prazoInicio, DateTimeImmutable $prazoResolucao, ?int $tecnicoId,
+        ?string $localizacao = null
     ): int {
         $this->db->prepare(
             'INSERT INTO chamados
-                (glpi_ticket_id, numero, titulo, tipo, categoria, solicitante_nome,
+                (glpi_ticket_id, numero, titulo, tipo, categoria, solicitante_nome, unidade,
                  impacto, urgencia, criticidade, equipe_atual, tecnico_atual_id, status_glpi,
                  prazo_inicio_atendimento, prazo_resolucao, aberto_em)
              VALUES
-                (:tid, :numero, :titulo, :tipo, :categoria, :solicitante,
+                (:tid, :numero, :titulo, :tipo, :categoria, :solicitante, :unidade,
                  :impacto, :urgencia, :criticidade, :equipe, :tecnico, :status,
                  :prazo_inicio, :prazo_resolucao, :aberto_em)'
         )->execute([
@@ -471,6 +489,7 @@ class GlpiSyncWorker
             'tipo'        => $tipo,
             'categoria'   => $this->limparTextoGlpi($ticket['itilcategories_id'] ?? null),
             'solicitante' => $this->resolverNomeSolicitante($ticketId),
+            'unidade'     => $localizacao,
             'impacto'     => $impacto,
             'urgencia'    => $urgencia,
             'criticidade' => $criticidade,
