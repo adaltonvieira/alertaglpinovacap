@@ -12,6 +12,13 @@ use App\Telegram\TelegramClient;
 use PDO;
 use DateTimeImmutable;
 
+/**
+ * Worker executado via cron (a cada 1 minuto - ver docker/crontab) que:
+ *  1. Busca chamados novos/alterados no GLPI desde a ultima execucao.
+ *  2. Detecta os eventos: novo chamado, atribuicao, reatribuicao,
+ *     alteracao de prioridade/SLA, resolucao, fechamento.
+ *  3. Persiste o estado local (tabela `chamados`) e dispara notificacoes.
+ */
 class GlpiSyncWorker
 {
     public function __construct(
@@ -50,6 +57,9 @@ class GlpiSyncWorker
         $impacto    = $this->mapearImpacto((int) ($ticket['impact'] ?? 3));
         $urgencia   = $this->mapearUrgencia((int) ($ticket['urgency'] ?? 3));
         $tipo       = ((int) ($ticket['type'] ?? 1)) === 2 ? 'REQUISICAO' : 'INCIDENTE';
+        // Usa a prioridade nativa do GLPI (campo 'priority', escala 1-6) em
+        // vez de recalcular a partir de impacto/urgencia - garante que o
+        // que aparece no Telegram bate com o que o tecnico ve no GLPI.
         $criticidade = $this->mapearPrioridadeGlpi((int) ($ticket['priority'] ?? 3));
 
         $abertoEm = new DateTimeImmutable($ticket['date'] ?? 'now');
@@ -156,6 +166,9 @@ class GlpiSyncWorker
         }
 
         if ($tecnicoId === null) {
+            // Politica acordada com a NOVACAP (jul/2026): o grupo so recebe
+            // alerta de chamados novos com prioridade Media, Alta ou Critica.
+            // Chamados de prioridade Baixa nao geram notificacao no grupo.
             if ($chamado->criticidade === 'BAIXA') {
                 return;
             }
@@ -348,6 +361,8 @@ class GlpiSyncWorker
 
     private function mapearPrioridadeGlpi(int $glpiPriority): string
     {
+        // Escala padrao do GLPI: 1=Muito baixa, 2=Baixa, 3=Media,
+        // 4=Alta, 5=Muito alta, 6=Critica.
         return match ($glpiPriority) {
             6 => 'CRITICA',
             5, 4 => 'ALTA',
@@ -374,6 +389,7 @@ class GlpiSyncWorker
         }
 
         foreach ($vinculos as $vinculo) {
+            // GLPI Ticket_User: type 1 = requerente (solicitante)
             if ((int) ($vinculo['type'] ?? 0) === 1 && !empty($vinculo['users_id'])) {
                 try {
                     $user = $this->glpi->getUser((int) $vinculo['users_id']);
@@ -389,6 +405,11 @@ class GlpiSyncWorker
         return null;
     }
 
+    /**
+     * Resolve o nome da localizacao do chamado. Como getTicket() ja e
+     * chamado com expand_dropdowns=true, o campo locations_id ja vem como
+     * texto (nome/sigla da localidade), nao como ID numerico.
+     */
     private function resolverLocalizacao(array $ticket): ?string
     {
         $valor = $ticket['locations_id'] ?? null;
@@ -449,7 +470,10 @@ class GlpiSyncWorker
 
         foreach ($vinculos as $vinculo) {
             if ((int) ($vinculo['type'] ?? 0) === 2 && !empty($vinculo['users_id'])) {
-                $stmt = $this->db->prepare('SELECT id FROM tecnicos WHERE glpi_user_id = :uid AND ativo = 1');
+                $stmt = $this->db->prepare(
+                    'SELECT id FROM tecnicos
+                     WHERE glpi_user_id = :uid AND ativo = 1 AND telegram_chat_id IS NOT NULL'
+                );
                 $stmt->execute(['uid' => (int) $vinculo['users_id']]);
                 $id = $stmt->fetchColumn();
                 return $id !== false ? (int) $id : null;
