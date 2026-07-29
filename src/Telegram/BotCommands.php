@@ -79,9 +79,8 @@ class BotCommands
                 $chatId,
                 "Ola! Voce ainda nao esta cadastrado como tecnico neste sistema.\n\n" .
                 "Seu ID do Telegram e: <code>{$telegramUserId}</code>\n\n" .
-                "Envie este numero para o administrador, junto com seu ID de " .
-                "usuario no GLPI, para ser cadastrado e comecar a receber " .
-                "notificacoes de chamados."
+                "Envie este numero para o administrador para ser cadastrado e " .
+                "comecar a receber notificacoes de chamados."
             );
             return;
         }
