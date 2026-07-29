@@ -78,6 +78,19 @@ class GlpiClient
         return $this->request('GET', "/Ticket/{$ticketId}/Ticket_User", [], $this->authHeaders());
     }
 
+    public function atribuirTecnico(int $ticketId, int $userId): array
+    {
+        $this->ensureSession();
+
+        return $this->request('POST', '/Ticket_User', [
+            'input' => [
+                'tickets_id' => $ticketId,
+                'users_id'   => $userId,
+                'type'       => 2,
+            ],
+        ], $this->authHeaders());
+    }
+
     public function listarSearchOptions(string $itemtype): array
     {
         $this->ensureSession();
