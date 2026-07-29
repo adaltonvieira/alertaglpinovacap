@@ -4,6 +4,7 @@ require __DIR__ . '/vendor/autoload.php';
 
 use App\GLPI\GlpiClient;
 use App\Services\SlaEngine;
+use App\Telegram\BotCommands;
 use App\Telegram\TelegramClient;
 use App\Telegram\WebhookHandler;
 
@@ -43,8 +44,9 @@ try {
 
     $sla = new SlaEngine();
     $telegram = new TelegramClient(getenv('TELEGRAM_BOT_TOKEN'));
+    $botCommands = new BotCommands($db, $telegram, $sla);
 
-    $handler = new WebhookHandler($db, $glpi, $telegram, $sla);
+    $handler = new WebhookHandler($db, $glpi, $telegram, $sla, $botCommands);
     $handler->processar($update);
 
     echo json_encode(['ok' => true]);
