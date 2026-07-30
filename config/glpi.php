@@ -9,9 +9,8 @@ return [
     'ca_bundle'  => getenv('GLPI_CA_BUNDLE') ?: null,
 
     'grupos_glpi_para_equipe' => [
-        1 => 'N1',
-        2 => 'N2',
-        3 => 'N3',
-        4 => 'NOC',
+        16 => 'N1',
+        1  => 'N2',
+        9  => 'N3',
     ],
 ];

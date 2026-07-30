@@ -4,10 +4,6 @@ namespace App\Telegram;
 
 use RuntimeException;
 
-/**
- * Cliente da Telegram Bot API oficial.
- * https://core.telegram.org/bots/api
- */
 class TelegramClient
 {
     private string $apiBase;
@@ -66,6 +62,36 @@ class TelegramClient
         ]);
     }
 
+    public function editMessageReplyMarkup(int|string $chatId, int $messageId, ?array $inlineKeyboard = null): array
+    {
+        $payload = [
+            'chat_id'    => $chatId,
+            'message_id' => $messageId,
+        ];
+
+        if ($inlineKeyboard !== null) {
+            $payload['reply_markup'] = json_encode(['inline_keyboard' => $inlineKeyboard]);
+        }
+
+        return $this->call('editMessageReplyMarkup', $payload);
+    }
+
+    public function sendForceReply(int|string $chatId, string $text, ?int $replyToMessageId = null): array
+    {
+        $payload = [
+            'chat_id'    => $chatId,
+            'text'       => $text,
+            'parse_mode' => 'HTML',
+            'reply_markup' => json_encode(['force_reply' => true, 'selective' => true]),
+        ];
+
+        if ($replyToMessageId !== null) {
+            $payload['reply_to_message_id'] = $replyToMessageId;
+        }
+
+        return $this->call('sendMessage', $payload);
+    }
+
     public function setWebhook(string $url, string $secretToken): array
     {
         return $this->call('setWebhook', [
@@ -77,25 +103,39 @@ class TelegramClient
 
     public function setMyCommands(array $commands): array
     {
-        // $commands = [['command' => 'meuschamados', 'description' => '...'], ...]
         return $this->call('setMyCommands', [
             'commands' => json_encode($commands),
         ]);
     }
 
-    /** Teclado inline padrão para notificações de chamado (ações rápidas) */
     public static function tecladoAcoesChamado(int $chamadoId, string $linkGlpi): array
     {
         return [
             [
-                ['text' => '📂 Abrir chamado', 'url' => $linkGlpi],
+                ['text' => "\u{1f4c2} Abrir chamado", 'url' => $linkGlpi],
             ],
             [
-                ['text' => '✅ Assumir', 'callback_data' => "assumir:{$chamadoId}"],
-                ['text' => '👁 Confirmar leitura', 'callback_data' => "leitura:{$chamadoId}"],
+                ['text' => "\u{2705} Assumir", 'callback_data' => "assumir:{$chamadoId}"],
+                ['text' => "\u{274c} Rejeitar", 'callback_data' => "rejeitar:{$chamadoId}"],
             ],
             [
-                ['text' => '📊 Ver SLA', 'callback_data' => "sla:{$chamadoId}"],
+                ['text' => "\u{1f441} Confirmar leitura", 'callback_data' => "leitura:{$chamadoId}"],
+                ['text' => "\u{1f4ca} Ver SLA", 'callback_data' => "sla:{$chamadoId}"],
+            ],
+        ];
+    }
+
+    public static function tecladoChamadoAssumido(int $chamadoId, string $linkGlpi, string $nomeTecnico): array
+    {
+        return [
+            [
+                ['text' => "\u{1f4c2} Abrir chamado", 'url' => $linkGlpi],
+            ],
+            [
+                ['text' => "\u{274c} Assumido por {$nomeTecnico}", 'callback_data' => "ja_assumido:{$chamadoId}"],
+            ],
+            [
+                ['text' => "\u{1f4ca} Ver SLA", 'callback_data' => "sla:{$chamadoId}"],
             ],
         ];
     }
@@ -117,7 +157,7 @@ class TelegramClient
         curl_close($ch);
 
         if ($raw === false) {
-            throw new RuntimeException("Erro de conexão com Telegram: {$error}");
+            throw new RuntimeException("Erro de conexao com Telegram: {$error}");
         }
 
         $decoded = json_decode($raw, true);

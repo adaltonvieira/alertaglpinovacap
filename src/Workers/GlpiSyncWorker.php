@@ -177,7 +177,8 @@ class GlpiSyncWorker
                 $chamadoId,
                 $this->chatGrupoPorEquipe($chamado->equipeAtual, 'novo_chamado'),
                 'novo_chamado',
-                $this->formatter->novoChamado($chamado)
+                $this->formatter->novoChamado($chamado),
+                TelegramClient::tecladoAcoesChamado($chamadoId, $chamado->linkGlpi)
             );
             return;
         }

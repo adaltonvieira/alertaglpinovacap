@@ -16,5 +16,7 @@ service cron start
 
 mkdir -p /var/www/html/logs
 nohup php /var/www/html/scripts/worker_dispatch_notifications.php >> /var/www/html/logs/dispatch.log 2>&1 &
+nohup php /var/www/html/scripts/worker_retry_fila.php >> /var/www/html/logs/retry.log 2>&1 &
 
 exec "$@"
+
