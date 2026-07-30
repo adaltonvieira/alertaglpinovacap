@@ -195,7 +195,7 @@ class GlpiSyncWorker
             (int) $tecnico['telegram_chat_id'],
             'atribuicao',
             $texto,
-            TelegramClient::tecladoAcoesChamado($chamadoId, $chamado->linkGlpi)
+            TelegramClient::tecladoChamadoAtribuido($chamadoId, $chamado->linkGlpi)
         );
     }
 
@@ -228,7 +228,7 @@ class GlpiSyncWorker
             (int) $tecnicoNovo['telegram_chat_id'],
             'reatribuicao',
             $this->formatter->reatribuicao($chamado, $nomeAnterior, $tecnicoNovo['nome'], null),
-            TelegramClient::tecladoAcoesChamado($chamadoId, $chamado->linkGlpi)
+            TelegramClient::tecladoChamadoAtribuido($chamadoId, $chamado->linkGlpi)
         );
 
         if ($tecnicoAnterior !== null) {

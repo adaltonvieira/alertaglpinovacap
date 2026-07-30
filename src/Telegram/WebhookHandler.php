@@ -4,10 +4,20 @@ namespace App\Telegram;
 
 use App\GLPI\GlpiClient;
 use App\Models\Chamado;
+use App\Services\MessageFormatter;
+use App\Services\NotificationDispatcher;
 use App\Services\SlaEngine;
 use App\Support\GlpiUrl;
 use PDO;
 
+/**
+ * Processa os updates recebidos via webhook do Telegram: callback_query
+ * dos botoes (Assumir, Rejeitar, Confirmar leitura, Ver SLA) e as respostas
+ * de texto livre do fluxo de rejeicao (ForceReply).
+ *
+ * "Abrir chamado" NAO passa por aqui - e um botao de URL, o proprio
+ * Telegram abre o link direto, sem falar com nosso backend.
+ */
 class WebhookHandler
 {
     public function __construct(
@@ -15,6 +25,8 @@ class WebhookHandler
         private GlpiClient $glpi,
         private TelegramClient $telegram,
         private SlaEngine $sla,
+        private MessageFormatter $formatter,
+        private NotificationDispatcher $dispatcher,
         private BotCommands $botCommands,
     ) {
     }
@@ -120,7 +132,25 @@ class WebhookHandler
             error_log('[WebhookHandler] GLPI atribuido, mas falhou ao atualizar banco local: ' . $e->getMessage());
         }
 
+        // Atualiza os botoes em TODAS as mensagens que mencionam este
+        // chamado (grupo + qualquer mensagem individual), para que quem
+        // mais olhar veja que ja foi assumido - evita duas pessoas
+        // tentando assumir o mesmo chamado ao mesmo tempo.
         $this->atualizarBotoesComoAssumido($chamado, $tecnico['nome']);
+
+        // Notifica o proprio tecnico imediatamente (nao espera o proximo
+        // ciclo de sincronizacao, que so rodaria daqui uns 20s).
+        try {
+            $this->dispatcher->enfileirar(
+                $chamado->id,
+                (int) $tecnico['telegram_chat_id'],
+                'atribuicao',
+                $this->formatter->chamadoAtribuido($chamado, $tecnico['nome']),
+                TelegramClient::tecladoChamadoAtribuido($chamado->id, $chamado->linkGlpi)
+            );
+        } catch (\Throwable $e) {
+            error_log('[WebhookHandler] Falha ao enviar notificacao de atribuicao (nao critico): ' . $e->getMessage());
+        }
 
         $this->responderCallback($callbackId, 'Chamado assumido com sucesso!', false);
     }
@@ -152,6 +182,8 @@ class WebhookHandler
                     $novoTeclado
                 );
             } catch (\Throwable $e) {
+                // Nao critico - a mensagem pode ter sido apagada, ou o bot
+                // pode nao ter mais permissao naquele chat. So loga.
                 error_log('[WebhookHandler] Falha ao atualizar botoes de uma mensagem (nao critico): ' . $e->getMessage());
             }
         }
@@ -159,6 +191,15 @@ class WebhookHandler
 
     private function iniciarRejeicao(string $callbackId, Chamado $chamado, array $tecnico): void
     {
+        if ($chamado->tecnicoAtualId !== (int) $tecnico['id']) {
+            $this->responderCallback(
+                $callbackId,
+                'Voce so pode rejeitar chamados que estao atribuidos a voce.',
+                true
+            );
+            return;
+        }
+
         if ($tecnico['telegram_chat_id'] === null) {
             $this->responderCallback($callbackId, 'Erro interno: chat privado nao encontrado.', true);
             return;
@@ -264,7 +305,7 @@ class WebhookHandler
             try {
                 $this->telegram->sendMessage(
                     $grupo,
-                    "Chamado #{$chamado->numero} foi rejeitado e voltou para a fila.\n" .
+                    "\u{26a0}\u{fe0f} Chamado #{$chamado->numero} foi rejeitado e voltou para a fila.\n" .
                     "Motivo: {$motivo}\n\n" .
                     "Link: {$chamado->linkGlpi}"
                 );

@@ -4,6 +4,10 @@ namespace App\Telegram;
 
 use RuntimeException;
 
+/**
+ * Cliente da Telegram Bot API oficial.
+ * https://core.telegram.org/bots/api
+ */
 class TelegramClient
 {
     private string $apiBase;
@@ -76,6 +80,11 @@ class TelegramClient
         return $this->call('editMessageReplyMarkup', $payload);
     }
 
+    /**
+     * Manda uma mensagem pedindo resposta em texto livre (usado pelo botao
+     * "Rejeitar" para coletar o motivo). O ID da mensagem retornada precisa
+     * ser guardado para casarmos a resposta do usuario depois.
+     */
     public function sendForceReply(int|string $chatId, string $text, ?int $replyToMessageId = null): array
     {
         $payload = [
@@ -103,11 +112,14 @@ class TelegramClient
 
     public function setMyCommands(array $commands): array
     {
+        // $commands = [['command' => 'meuschamados', 'description' => '...'], ...]
         return $this->call('setMyCommands', [
             'commands' => json_encode($commands),
         ]);
     }
 
+    /** Teclado inline padrao para notificacoes de chamado (acoes rapidas) */
+    /** Teclado para chamado SEM tecnico atribuido (grupo) - sem Rejeitar, nao faz sentido ainda */
     public static function tecladoAcoesChamado(int $chamadoId, string $linkGlpi): array
     {
         return [
@@ -116,15 +128,36 @@ class TelegramClient
             ],
             [
                 ['text' => "\u{2705} Assumir", 'callback_data' => "assumir:{$chamadoId}"],
-                ['text' => "\u{274c} Rejeitar", 'callback_data' => "rejeitar:{$chamadoId}"],
+                ['text' => "\u{1f441} Confirmar leitura", 'callback_data' => "leitura:{$chamadoId}"],
             ],
             [
-                ['text' => "\u{1f441} Confirmar leitura", 'callback_data' => "leitura:{$chamadoId}"],
                 ['text' => "\u{1f4ca} Ver SLA", 'callback_data' => "sla:{$chamadoId}"],
             ],
         ];
     }
 
+    /** Teclado para chamado JA atribuido a um tecnico - com Rejeitar */
+    public static function tecladoChamadoAtribuido(int $chamadoId, string $linkGlpi): array
+    {
+        return [
+            [
+                ['text' => "\u{1f4c2} Abrir chamado", 'url' => $linkGlpi],
+            ],
+            [
+                ['text' => "\u{274c} Rejeitar", 'callback_data' => "rejeitar:{$chamadoId}"],
+                ['text' => "\u{1f441} Confirmar leitura", 'callback_data' => "leitura:{$chamadoId}"],
+            ],
+            [
+                ['text' => "\u{1f4ca} Ver SLA", 'callback_data' => "sla:{$chamadoId}"],
+            ],
+        ];
+    }
+
+    /**
+     * Teclado exibido depois que alguem assume o chamado. O Telegram nao
+     * tem um estado nativo de "botao desabilitado" - simulamos trocando o
+     * texto/acao do botao Assumir para um aviso (nao volta a atribuir).
+     */
     public static function tecladoChamadoAssumido(int $chamadoId, string $linkGlpi, string $nomeTecnico): array
     {
         return [
