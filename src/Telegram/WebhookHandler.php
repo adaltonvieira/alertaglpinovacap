@@ -237,19 +237,23 @@ class WebhookHandler
 
     private function tentarProcessarRespostaDeRejeicao(array $message): bool
     {
-        $replyToId = $message['reply_to_message']['message_id'] ?? null;
         $chatId = $message['chat']['id'] ?? null;
         $texto = trim($message['text'] ?? '');
 
-        if ($replyToId === null || $chatId === null || $texto === '') {
+        // Nao exige reply formal (o ForceReply do Telegram deveria ativar
+        // isso sozinho, mas nem sempre gruda em todos os clientes/versoes).
+        // Qualquer texto simples (que nao seja um comando com "/") enquanto
+        // houver uma rejeicao pendente nesse chat privado ja conta como
+        // motivo - reduz friccao pro tecnico.
+        if ($chatId === null || $texto === '' || $texto[0] === '/') {
             return false;
         }
 
         try {
             $stmt = $this->db->prepare(
-                'SELECT * FROM rejeicoes_pendentes WHERE prompt_chat_id = :chat_id AND prompt_message_id = :msg_id LIMIT 1'
+                'SELECT * FROM rejeicoes_pendentes WHERE prompt_chat_id = :chat_id ORDER BY id DESC LIMIT 1'
             );
-            $stmt->execute(['chat_id' => $chatId, 'msg_id' => $replyToId]);
+            $stmt->execute(['chat_id' => $chatId]);
             $pendente = $stmt->fetch(PDO::FETCH_ASSOC);
         } catch (\Throwable $e) {
             error_log('[WebhookHandler] Falha ao consultar rejeicoes pendentes: ' . $e->getMessage());
