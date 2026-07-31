@@ -287,7 +287,19 @@ class WebhookHandler
                 true
             );
         } catch (\Throwable $e) {
-            error_log('[WebhookHandler] Falha ao registrar rejeicao no GLPI: ' . $e->getMessage());
+            error_log('[WebhookHandler] Falha ao registrar rejeicao no GLPI (nao critico): ' . $e->getMessage());
+        }
+
+        $desatribuiuNoGlpi = false;
+        if ($tecnicoQueRejeitou !== null && $tecnicoQueRejeitou['glpi_user_id']) {
+            try {
+                $desatribuiuNoGlpi = $this->glpi->removerAtribuicaoTecnico(
+                    $chamado->glpiTicketId,
+                    (int) $tecnicoQueRejeitou['glpi_user_id']
+                );
+            } catch (\Throwable $e) {
+                error_log('[WebhookHandler] Falha ao remover atribuicao no GLPI: ' . $e->getMessage());
+            }
         }
 
         try {
@@ -304,6 +316,7 @@ class WebhookHandler
         $this->telegram->sendMessage(
             $chatId,
             "Rejeicao registrada. O chamado #{$chamado->numero} foi devolvido para a fila da equipe."
+            . ($desatribuiuNoGlpi ? '' : "\n\n\u{26a0}\u{fe0f} Nao foi possivel desatribuir automaticamente no GLPI (permissao). Por favor, remova sua atribuicao manualmente no sistema.")
         );
 
         $grupo = $this->chatGrupoPorEquipe($chamado->equipeAtual);

@@ -91,6 +91,25 @@ class GlpiClient
         ], $this->authHeaders());
     }
 
+    public function removerAtribuicaoTecnico(int $ticketId, int $userId): bool
+    {
+        $this->ensureSession();
+
+        $vinculos = $this->getTicketUsers($ticketId);
+
+        foreach ($vinculos as $vinculo) {
+            if ((int) ($vinculo['type'] ?? 0) === 2 && (int) ($vinculo['users_id'] ?? 0) === $userId) {
+                $relacaoId = (int) ($vinculo['id'] ?? 0);
+                if ($relacaoId > 0) {
+                    $this->request('DELETE', "/Ticket_User/{$relacaoId}", [], $this->authHeaders());
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     public function listarSearchOptions(string $itemtype): array
     {
         $this->ensureSession();
