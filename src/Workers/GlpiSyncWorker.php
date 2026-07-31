@@ -165,14 +165,15 @@ class GlpiSyncWorker
             return;
         }
 
-        if ($tecnicoId === null) {
-            // Politica acordada com a NOVACAP (jul/2026): o grupo so recebe
-            // alerta de chamados novos com prioridade Media, Alta ou Critica.
-            // Chamados de prioridade Baixa nao geram notificacao no grupo.
-            if ($chamado->criticidade === 'BAIXA') {
-                return;
-            }
+        // Politica acordada com a NOVACAP (jul/2026): chamados de prioridade
+        // Baixa nao geram nenhuma notificacao pelo Telegram (nem grupo, nem
+        // atribuicao direta) - sao atendidos por telefone, e quem atende ja
+        // se autoatribui no GLPI diretamente.
+        if ($chamado->criticidade === 'BAIXA') {
+            return;
+        }
 
+        if ($tecnicoId === null) {
             $this->dispatcher->enfileirar(
                 $chamadoId,
                 $this->chatGrupoPorEquipe($chamado->equipeAtual, 'novo_chamado'),
@@ -203,6 +204,10 @@ class GlpiSyncWorker
     {
         $chamado = $this->hidratarChamado($chamadoId);
         if ($chamado === null) {
+            return;
+        }
+
+        if ($chamado->criticidade === 'BAIXA') {
             return;
         }
 
@@ -248,6 +253,10 @@ class GlpiSyncWorker
             return;
         }
 
+        if ($chamado->criticidade === 'BAIXA') {
+            return;
+        }
+
         $texto = $this->formatter->alteracaoPrioridade($chamado, [
             'urgencia'    => $antes['urgencia'],
             'impacto'     => $antes['impacto'],
@@ -267,6 +276,10 @@ class GlpiSyncWorker
     {
         $chamado = $this->hidratarChamado($chamadoId);
         if ($chamado === null) {
+            return;
+        }
+
+        if ($chamado->criticidade === 'BAIXA') {
             return;
         }
 
@@ -296,6 +309,10 @@ class GlpiSyncWorker
     {
         $chamado = $this->hidratarChamado($chamadoId);
         if ($chamado === null) {
+            return;
+        }
+
+        if ($chamado->criticidade === 'BAIXA') {
             return;
         }
 
