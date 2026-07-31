@@ -16,6 +16,7 @@ $comandos = [
     ['command' => 'hoje',         'description' => 'Chamados abertos hoje'],
     ['command' => 'sla',          'description' => 'Seus chamados por SLA restante'],
     ['command' => 'painel',       'description' => 'Resumo geral do sistema'],
+    ['command' => 'id',           'description' => 'Mostra seu ID do Telegram'],
 ];
 
 $resultado = $telegram->setMyCommands($comandos);

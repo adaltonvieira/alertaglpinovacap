@@ -303,11 +303,12 @@ class WebhookHandler
         $grupo = $this->chatGrupoPorEquipe($chamado->equipeAtual);
         if ($grupo !== null) {
             try {
-                $this->telegram->sendMessage(
+                $this->dispatcher->enfileirar(
+                    $chamado->id,
                     $grupo,
-                    "\u{26a0}\u{fe0f} Chamado #{$chamado->numero} foi rejeitado e voltou para a fila.\n" .
-                    "Motivo: {$motivo}\n\n" .
-                    "Link: {$chamado->linkGlpi}"
+                    'novo_chamado',
+                    $this->formatter->chamadoRejeitado($chamado, $motivo),
+                    TelegramClient::tecladoAcoesChamado($chamado->id, $chamado->linkGlpi)
                 );
             } catch (\Throwable $e) {
                 error_log('[WebhookHandler] Falha ao notificar grupo sobre rejeicao: ' . $e->getMessage());

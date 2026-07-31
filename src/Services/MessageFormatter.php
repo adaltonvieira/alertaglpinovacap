@@ -4,6 +4,11 @@ namespace App\Services;
 
 use App\Models\Chamado;
 
+/**
+ * Formata as mensagens enviadas ao Telegram em HTML, seguindo o layout
+ * de refer\u{ea}ncia do briefing, mas com prazos e criticidades derivados
+ * do TR (via SlaEngine), nunca de valores fixos no template.
+ */
 class MessageFormatter
 {
     public function __construct(private SlaEngine $sla)
@@ -140,6 +145,24 @@ class MessageFormatter
         return $this->formatarMinutos($minutos) .
             " (NMS " . ($c->tipo === 'INCIDENTE' ? 'Incidente' : "Requisi\u{e7}\u{e3}o") .
             " / TR ANEXO IV)";
+    }
+
+    public function chamadoRejeitado(Chamado $c, string $motivo): string
+    {
+        $tempoRestante = $this->formatarTempoRestante($c->prazoResolucao);
+        $slaTotal = $this->formatarMinutos($this->sla->prazoResolucaoMinutos($c->tipo, $c->criticidade));
+
+        return
+            "\u{1f504} <b>CHAMADO REJEITADO - DISPONIVEL NOVAMENTE</b>\n\n" .
+            "\u{1f4ce} <b>#{$c->numero}</b>\n" .
+            "\u{1f4dd} {$c->titulo}\n\n" .
+            "Motivo da rejeicao: {$motivo}\n\n" .
+            "\u{1f4c1} <b>Categoria</b>\n" . ($c->categoria ?: '-') . "\n\n" .
+            "{$this->sla->emojiCriticidade($c->criticidade)} <b>Prioridade:</b> {$this->sla->labelCriticidade($c->criticidade)}\n" .
+            "\u{1f3af} <b>SLA:</b> {$slaTotal}\n" .
+            "\u{23f0} <b>Vence em:</b> {$tempoRestante}\n\n" .
+            "\u{1f465} <b>Grupo Responsavel</b>\n{$this->equipeLabel($c->equipeAtual)}\n\n" .
+            "\u{1f517} <b>Link:</b> {$c->linkGlpi}";
     }
 
     private function equipeLabel(string $equipe): string

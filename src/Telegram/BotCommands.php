@@ -52,6 +52,11 @@ class BotCommands
             return;
         }
 
+        if ($comando === '/id') {
+            $this->telegram->sendMessage($chatId, "Seu ID do Telegram e: <code>{$telegramUserId}</code>");
+            return;
+        }
+
         if ($tecnico === null) {
             $this->telegram->sendMessage(
                 $chatId,
@@ -94,7 +99,8 @@ class BotCommands
             "/atrasados - chamados com SLA vencido\n" .
             "/hoje - chamados abertos hoje\n" .
             "/sla - seus chamados ordenados por SLA restante\n" .
-            "/painel - resumo geral"
+            "/painel - resumo geral\n" .
+            "/id - mostra seu ID do Telegram"
         );
     }
 
