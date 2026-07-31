@@ -353,14 +353,18 @@ class WebhookHandler
         }
 
         if ($foiNovaConfirmacao) {
-            try {
-                $this->glpi->adicionarAcompanhamento(
-                    $chamado->glpiTicketId,
-                    "O tecnico {$tecnico['nome']} confirmou leitura da notificacao via Telegram.",
-                    true
-                );
-            } catch (\Throwable $e) {
-                error_log('[WebhookHandler] Falha ao registrar confirmacao de leitura no GLPI: ' . $e->getMessage());
+            $grupo = $this->chatGrupoPorEquipe($chamado->equipeAtual);
+            if ($grupo !== null) {
+                try {
+                    $this->dispatcher->enfileirar(
+                        $chamado->id,
+                        $grupo,
+                        'confirmacao_leitura',
+                        "\u{2705} {$tecnico['nome']} confirmou leitura do chamado #{$chamado->numero}."
+                    );
+                } catch (\Throwable $e) {
+                    error_log('[WebhookHandler] Falha ao notificar grupo sobre confirmacao de leitura (nao critico): ' . $e->getMessage());
+                }
             }
         }
 
