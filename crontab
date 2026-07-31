@@ -1,12 +1,10 @@
-# worker_sync.php e worker_sla_monitor.php NAO estao mais aqui: rodam em
-# loop continuo dentro dos seus proprios containers (worker-sync,
-# worker-sla), nao dependem mais do cron.
+# worker_sync.php, worker_sla_monitor.php e worker_retry_fila.php NAO
+# estao mais aqui: rodam em loop continuo dentro dos seus proprios
+# containers/processos (worker-sync, worker-sla, background no app),
+# nao dependem mais do cron.
 
 # Resumo diario para tecnicos as 08:00
 0 8 * * 1-5 root php /var/www/html/scripts/report_resumo_diario_tecnicos.php >> /var/www/html/logs/reports.log 2>&1
 
 # Resumo gerencial ao fim do expediente (19h, dias uteis)
 0 19 * * 1-5 root php /var/www/html/scripts/report_resumo_gerencial.php >> /var/www/html/logs/reports.log 2>&1
-
-# Retry de mensagens que falharam (backoff ja calculado em proxima_tentativa_em)
-* * * * * root php /var/www/html/scripts/worker_retry_fila.php >> /var/www/html/logs/retry.log 2>&1
