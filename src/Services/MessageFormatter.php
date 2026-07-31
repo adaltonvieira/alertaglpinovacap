@@ -24,6 +24,8 @@ class MessageFormatter
             "\u{1f514} <b>NOVO CHAMADO</b>\n\n" .
             "\u{1f4ce} <b>#{$c->numero}</b>\n" .
             "\u{1f4dd} {$c->titulo}\n\n" .
+            "\u{1f464} <b>Requerente:</b> " . ($c->solicitanteNome ?: '-') . "\n" .
+            "\u{1f3e2} <b>Localiza\u{e7}\u{e3}o:</b> " . ($c->unidade ?: '-') . "\n\n" .
             "\u{1f4c1} <b>Categoria</b>\n" . ($c->categoria ?: '-') . "\n\n" .
             "{$this->sla->emojiCriticidade($c->criticidade)} <b>Prioridade:</b> {$this->sla->labelCriticidade($c->criticidade)}\n" .
             "\u{1f3af} <b>SLA:</b> {$slaTotal}\n" .
@@ -147,7 +149,7 @@ class MessageFormatter
             " / TR ANEXO IV)";
     }
 
-    public function chamadoRejeitado(Chamado $c, string $motivo): string
+    public function chamadoRejeitado(Chamado $c, string $motivo, string $nomeTecnico): string
     {
         $tempoRestante = $this->formatarTempoRestante($c->prazoResolucao);
         $slaTotal = $this->formatarMinutos($this->sla->prazoResolucaoMinutos($c->tipo, $c->criticidade));
@@ -156,7 +158,10 @@ class MessageFormatter
             "\u{1f504} <b>CHAMADO REJEITADO - DISPONIVEL NOVAMENTE</b>\n\n" .
             "\u{1f4ce} <b>#{$c->numero}</b>\n" .
             "\u{1f4dd} {$c->titulo}\n\n" .
+            "Rejeitado por: {$nomeTecnico}\n" .
             "Motivo da rejeicao: {$motivo}\n\n" .
+            "\u{1f464} <b>Requerente:</b> " . ($c->solicitanteNome ?: '-') . "\n" .
+            "\u{1f3e2} <b>Localiza\u{e7}\u{e3}o:</b> " . ($c->unidade ?: '-') . "\n\n" .
             "\u{1f4c1} <b>Categoria</b>\n" . ($c->categoria ?: '-') . "\n\n" .
             "{$this->sla->emojiCriticidade($c->criticidade)} <b>Prioridade:</b> {$this->sla->labelCriticidade($c->criticidade)}\n" .
             "\u{1f3af} <b>SLA:</b> {$slaTotal}\n" .

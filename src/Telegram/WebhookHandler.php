@@ -271,6 +271,8 @@ class WebhookHandler
     private function processarRejeicao(int $pendenteId, int $chamadoId, int|string $chatId, string $motivo): void
     {
         $chamado = $this->buscarChamado($chamadoId);
+        $tecnicoQueRejeitou = $this->buscarTecnicoPorTelegramId((int) $chatId);
+        $nomeTecnico = $tecnicoQueRejeitou['nome'] ?? '(desconhecido)';
 
         $this->removerRejeicaoPendente($pendenteId);
 
@@ -281,7 +283,7 @@ class WebhookHandler
         try {
             $this->glpi->adicionarAcompanhamento(
                 $chamado->glpiTicketId,
-                "Chamado rejeitado via Telegram. Motivo: {$motivo}",
+                "Chamado rejeitado via Telegram por {$nomeTecnico}. Motivo: {$motivo}",
                 true
             );
         } catch (\Throwable $e) {
@@ -311,7 +313,7 @@ class WebhookHandler
                     $chamado->id,
                     $grupo,
                     'novo_chamado',
-                    $this->formatter->chamadoRejeitado($chamado, $motivo),
+                    $this->formatter->chamadoRejeitado($chamado, $motivo, $nomeTecnico),
                     TelegramClient::tecladoAcoesChamado($chamado->id, $chamado->linkGlpi)
                 );
             } catch (\Throwable $e) {
@@ -331,17 +333,35 @@ class WebhookHandler
 
     private function confirmarLeitura(string $callbackId, Chamado $chamado, array $tecnico): void
     {
+        $foiNovaConfirmacao = false;
+
         try {
-            $this->db->prepare(
+            $stmt = $this->db->prepare(
                 'INSERT INTO confirmacoes_leitura (chamado_id, tecnico_id)
                  VALUES (:chamado_id, :tecnico_id)
                  ON DUPLICATE KEY UPDATE confirmado_em = confirmado_em'
-            )->execute([
+            );
+            $stmt->execute([
                 'chamado_id' => $chamado->id,
                 'tecnico_id' => $tecnico['id'],
             ]);
+            // MySQL: rowCount() = 1 quando inseriu de verdade (primeira vez),
+            // 0 quando ja existia e o UPDATE nao mudou nada (reclique).
+            $foiNovaConfirmacao = $stmt->rowCount() === 1;
         } catch (\Throwable $e) {
             error_log('[WebhookHandler] Falha ao gravar confirmacao de leitura: ' . $e->getMessage());
+        }
+
+        if ($foiNovaConfirmacao) {
+            try {
+                $this->glpi->adicionarAcompanhamento(
+                    $chamado->glpiTicketId,
+                    "O tecnico {$tecnico['nome']} confirmou leitura da notificacao via Telegram.",
+                    true
+                );
+            } catch (\Throwable $e) {
+                error_log('[WebhookHandler] Falha ao registrar confirmacao de leitura no GLPI: ' . $e->getMessage());
+            }
         }
 
         $this->responderCallback($callbackId, 'Leitura confirmada.', false);
