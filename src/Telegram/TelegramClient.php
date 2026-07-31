@@ -119,7 +119,7 @@ class TelegramClient
     }
 
     /** Teclado inline padrao para notificacoes de chamado (acoes rapidas) */
-    /** Teclado para chamado SEM tecnico atribuido (grupo) - sem Rejeitar, nao faz sentido ainda */
+    /** Teclado para chamado SEM tecnico atribuido (grupo) - sem Rejeitar nem Confirmar leitura */
     public static function tecladoAcoesChamado(int $chamadoId, string $linkGlpi): array
     {
         return [
@@ -128,9 +128,6 @@ class TelegramClient
             ],
             [
                 ['text' => "\u{2705} Assumir", 'callback_data' => "assumir:{$chamadoId}"],
-                ['text' => "\u{1f441} Confirmar leitura", 'callback_data' => "leitura:{$chamadoId}"],
-            ],
-            [
                 ['text' => "\u{1f4ca} Ver SLA", 'callback_data' => "sla:{$chamadoId}"],
             ],
         ];

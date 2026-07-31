@@ -115,11 +115,14 @@ class GlpiSyncWorker
         $foiResolvido = $antes['status_glpi'] !== 'resolvido' && $depois['status_glpi'] === 'resolvido';
         $foiFechado   = $antes['status_glpi'] !== 'fechado' && $depois['status_glpi'] === 'fechado';
 
+        $mudouTecnicoParaValor = ($antes['tecnico_atual_id'] != $depois['tecnico_atual_id']) && $depois['tecnico_atual_id'] !== null;
+
         $this->db->prepare(
             'UPDATE chamados SET impacto = :impacto, urgencia = :urgencia, criticidade = :criticidade,
                 status_glpi = :status, tecnico_atual_id = :tecnico, prazo_resolucao = :prazo,
                 titulo = :titulo, categoria = :categoria, solicitante_nome = :solicitante,
                 unidade = :unidade,
+                atribuido_em = IF(:mudou_tecnico = 1, NOW(), atribuido_em),
                 resolvido_em = IF(:resolvido = 1, NOW(), resolvido_em),
                 fechado_em = IF(:fechado = 1, NOW(), fechado_em)
              WHERE id = :id'
@@ -134,6 +137,7 @@ class GlpiSyncWorker
             'categoria'  => $depois['categoria'] ?? $antes['categoria'],
             'solicitante'=> $depois['solicitante_nome'] ?? $antes['solicitante_nome'],
             'unidade'    => $depois['unidade'] ?? $antes['unidade'],
+            'mudou_tecnico' => $mudouTecnicoParaValor ? 1 : 0,
             'resolvido'  => $foiResolvido ? 1 : 0,
             'fechado'    => $foiFechado ? 1 : 0,
             'id'         => $chamadoId,
@@ -519,11 +523,11 @@ class GlpiSyncWorker
             'INSERT INTO chamados
                 (glpi_ticket_id, numero, titulo, tipo, categoria, solicitante_nome, unidade,
                  impacto, urgencia, criticidade, equipe_atual, tecnico_atual_id, status_glpi,
-                 prazo_inicio_atendimento, prazo_resolucao, aberto_em)
+                 prazo_inicio_atendimento, prazo_resolucao, aberto_em, atribuido_em)
              VALUES
                 (:tid, :numero, :titulo, :tipo, :categoria, :solicitante, :unidade,
                  :impacto, :urgencia, :criticidade, :equipe, :tecnico, :status,
-                 :prazo_inicio, :prazo_resolucao, :aberto_em)'
+                 :prazo_inicio, :prazo_resolucao, :aberto_em, :atribuido_em)'
         )->execute([
             'tid'         => $ticketId,
             'numero'      => (string) $ticketId,
@@ -541,6 +545,7 @@ class GlpiSyncWorker
             'prazo_inicio'    => $prazoInicio->format('Y-m-d H:i:s'),
             'prazo_resolucao' => $prazoResolucao->format('Y-m-d H:i:s'),
             'aberto_em'       => $abertoEm->format('Y-m-d H:i:s'),
+            'atribuido_em'    => $tecnicoId !== null ? (new DateTimeImmutable())->format('Y-m-d H:i:s') : null,
         ]);
 
         return (int) $this->db->lastInsertId();

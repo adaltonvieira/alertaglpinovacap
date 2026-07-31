@@ -73,6 +73,7 @@ class BotCommands
             '/hoje'         => $this->comandoHoje($chatId),
             '/sla'          => $this->comandoSla($chatId, $tecnico),
             '/painel'       => $this->comandoPainel($chatId),
+            '/naolidos'     => $this->comandoNaoLidos($chatId),
             default         => null, // comando desconhecido: ignora silenciosamente
         };
     }
@@ -100,6 +101,7 @@ class BotCommands
             "/hoje - chamados abertos hoje\n" .
             "/sla - seus chamados ordenados por SLA restante\n" .
             "/painel - resumo geral\n" .
+            "/naolidos - chamados atribuidos ainda nao confirmados como lidos\n" .
             "/id - mostra seu ID do Telegram"
         );
     }
@@ -219,6 +221,44 @@ class BotCommands
         $this->telegram->sendMessage($chatId, $texto);
     }
 
+    private function comandoNaoLidos(int|string $chatId): void
+    {
+        $stmt = $this->db->query(
+            "SELECT c.numero, c.titulo, c.criticidade, c.atribuido_em, t.nome AS tecnico_nome
+             FROM chamados c
+             JOIN tecnicos t ON t.id = c.tecnico_atual_id
+             WHERE c.tecnico_atual_id IS NOT NULL
+               AND c.atribuido_em IS NOT NULL
+               AND c.status_glpi NOT IN ('resolvido','fechado')
+               AND NOT EXISTS (
+                   SELECT 1 FROM confirmacoes_leitura cl
+                   WHERE cl.chamado_id = c.id AND cl.tecnico_id = c.tecnico_atual_id
+               )
+             ORDER BY c.atribuido_em ASC
+             LIMIT " . self::LIMITE_LISTA
+        );
+        $linhas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (empty($linhas)) {
+            $this->telegram->sendMessage($chatId, "Todos os chamados atribuidos ja foram confirmados como lidos.");
+            return;
+        }
+
+        $texto = "<b>Chamados atribuidos ainda nao lidos</b>\n\n";
+        $agora = new \DateTimeImmutable();
+
+        foreach ($linhas as $linha) {
+            $atribuidoEm = new \DateTimeImmutable($linha['atribuido_em']);
+            $minutosEspera = (int) (($agora->getTimestamp() - $atribuidoEm->getTimestamp()) / 60);
+            $emoji = $this->sla->emojiCriticidade($linha['criticidade']);
+
+            $texto .= "{$emoji} #{$linha['numero']} - {$linha['titulo']}\n";
+            $texto .= "   Tecnico: {$linha['tecnico_nome']} - esperando ha " . $this->formatarMinutos($minutosEspera) . "\n\n";
+        }
+
+        $this->telegram->sendMessage($chatId, $texto);
+    }
+
     private function comandoPainel(int|string $chatId): void
     {
         $totalAberto = (int) $this->db->query(
@@ -266,6 +306,22 @@ class BotCommands
             $texto .= "{$emoji} #{$linha['numero']} - {$linha['titulo']} (vence {$prazo})\n";
         }
         return $texto;
+    }
+
+    private function formatarMinutos(int $minutos): string
+    {
+        $horas = intdiv($minutos, 60);
+        $min = $minutos % 60;
+
+        if ($horas === 0) {
+            return "{$min}min";
+        }
+
+        if ($min === 0) {
+            return "{$horas}h";
+        }
+
+        return "{$horas}h{$min}min";
     }
 
     private function buscarTecnicoPorTelegramId(int $telegramUserId): ?array

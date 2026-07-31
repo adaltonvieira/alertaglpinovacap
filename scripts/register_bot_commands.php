@@ -1,5 +1,12 @@
 <?php
 
+/**
+ * Registra a lista de comandos no menu do bot (aparece quando o usuario
+ * digita "/" no chat com o bot no Telegram).
+ *
+ * Uso: php scripts/register_bot_commands.php
+ */
+
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 use App\Telegram\TelegramClient;
@@ -16,6 +23,7 @@ $comandos = [
     ['command' => 'hoje',         'description' => 'Chamados abertos hoje'],
     ['command' => 'sla',          'description' => 'Seus chamados por SLA restante'],
     ['command' => 'painel',       'description' => 'Resumo geral do sistema'],
+    ['command' => 'naolidos',     'description' => 'Chamados atribuidos ainda nao lidos'],
     ['command' => 'id',           'description' => 'Mostra seu ID do Telegram'],
 ];
 

@@ -122,7 +122,7 @@ class WebhookHandler
 
         try {
             $this->db->prepare(
-                'UPDATE chamados SET tecnico_atual_id = :tecnico, status_glpi = :status WHERE id = :id'
+                'UPDATE chamados SET tecnico_atual_id = :tecnico, status_glpi = :status, atribuido_em = NOW() WHERE id = :id'
             )->execute([
                 'tecnico' => $tecnico['id'],
                 'status'  => 'atribuido',
@@ -290,7 +290,7 @@ class WebhookHandler
 
         try {
             $this->db->prepare(
-                'UPDATE chamados SET tecnico_atual_id = NULL, status_glpi = :status WHERE id = :id'
+                'UPDATE chamados SET tecnico_atual_id = NULL, status_glpi = :status, atribuido_em = NULL WHERE id = :id'
             )->execute([
                 'status' => 'novo',
                 'id'     => $chamado->id,
