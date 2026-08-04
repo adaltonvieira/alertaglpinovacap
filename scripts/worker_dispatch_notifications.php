@@ -8,12 +8,17 @@ use App\Telegram\TelegramClient;
 $dotenv = Dotenv\Dotenv::createImmutable(dirname(__DIR__));
 $dotenv->safeLoad();
 
-$db = new PDO(
-    sprintf('mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4', getenv('DB_HOST'), getenv('DB_PORT'), getenv('DB_DATABASE')),
-    getenv('DB_USERNAME'),
-    getenv('DB_PASSWORD'),
-    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-);
+function criarConexaoDb(): PDO
+{
+    return new PDO(
+        sprintf('mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4', getenv('DB_HOST'), getenv('DB_PORT'), getenv('DB_DATABASE')),
+        getenv('DB_USERNAME'),
+        getenv('DB_PASSWORD'),
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+    );
+}
+
+$db = criarConexaoDb();
 
 $redis = new Predis\Client([
     'host'     => getenv('REDIS_HOST'),
@@ -24,12 +29,28 @@ $redis = new Predis\Client([
 $telegram = new TelegramClient(getenv('TELEGRAM_BOT_TOKEN'));
 $dispatcher = new NotificationDispatcher($db, $redis, $telegram);
 
-// Processo contínuo (worker de longa duração). Em Docker, o container
-// reinicia automaticamente (restart: unless-stopped) em caso de falha.
+// Processo continuo (worker de longa duracao).
 while (true) {
-    $processou = $dispatcher->processarProximo();
+    try {
+        $processou = $dispatcher->processarProximo();
 
-    if (!$processou) {
-        usleep(500_000); // 0.5s — evita busy-loop quando a fila está vazia
+        if (!$processou) {
+            usleep(500_000);
+        }
+    } catch (\Throwable $e) {
+        fwrite(STDERR, '[' . date('Y-m-d H:i:s') . '] ERRO: ' . $e->getMessage() . "\n");
+
+        // Reconecta ao banco - a conexao pode ter "morrido" por
+        // inatividade ("MySQL server has gone away"). Sem isso, o mesmo
+        // erro se repetiria para sempre com a conexao velha.
+        try {
+            $db = criarConexaoDb();
+            $dispatcher = new NotificationDispatcher($db, $redis, $telegram);
+            fwrite(STDOUT, '[' . date('Y-m-d H:i:s') . "] Reconectado ao banco com sucesso.\n");
+        } catch (\Throwable $e2) {
+            fwrite(STDERR, '[' . date('Y-m-d H:i:s') . '] Falha ao reconectar: ' . $e2->getMessage() . "\n");
+        }
+
+        sleep(2);
     }
 }

@@ -11,12 +11,17 @@ use App\Workers\SlaMonitorWorker;
 $dotenv = Dotenv\Dotenv::createImmutable(dirname(__DIR__));
 $dotenv->safeLoad();
 
-$db = new PDO(
-    sprintf('mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4', getenv('DB_HOST'), getenv('DB_PORT'), getenv('DB_DATABASE')),
-    getenv('DB_USERNAME'),
-    getenv('DB_PASSWORD'),
-    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-);
+function criarConexaoDb(): PDO
+{
+    return new PDO(
+        sprintf('mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4', getenv('DB_HOST'), getenv('DB_PORT'), getenv('DB_DATABASE')),
+        getenv('DB_USERNAME'),
+        getenv('DB_PASSWORD'),
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+    );
+}
+
+$db = criarConexaoDb();
 
 $redis = new Predis\Client([
     'host'     => getenv('REDIS_HOST'),
@@ -37,6 +42,15 @@ while (true) {
         fwrite(STDOUT, '[' . date('Y-m-d H:i:s') . "] Monitoramento de SLA concluido.\n");
     } catch (\Throwable $e) {
         fwrite(STDERR, '[' . date('Y-m-d H:i:s') . '] ERRO: ' . $e->getMessage() . "\n");
+
+        try {
+            $db = criarConexaoDb();
+            $dispatcher = new NotificationDispatcher($db, $redis, $telegram);
+            $worker = new SlaMonitorWorker($db, $sla, $formatter, $dispatcher);
+            fwrite(STDOUT, '[' . date('Y-m-d H:i:s') . "] Reconectado ao banco com sucesso.\n");
+        } catch (\Throwable $e2) {
+            fwrite(STDERR, '[' . date('Y-m-d H:i:s') . '] Falha ao reconectar: ' . $e2->getMessage() . "\n");
+        }
     }
 
     sleep(60);

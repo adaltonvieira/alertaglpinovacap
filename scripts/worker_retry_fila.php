@@ -7,12 +7,17 @@ use Predis\Client as RedisClient;
 $dotenv = Dotenv\Dotenv::createImmutable(dirname(__DIR__));
 $dotenv->safeLoad();
 
-$db = new PDO(
-    sprintf('mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4', getenv('DB_HOST'), getenv('DB_PORT'), getenv('DB_DATABASE')),
-    getenv('DB_USERNAME'),
-    getenv('DB_PASSWORD'),
-    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-);
+function criarConexaoDb(): PDO
+{
+    return new PDO(
+        sprintf('mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4', getenv('DB_HOST'), getenv('DB_PORT'), getenv('DB_DATABASE')),
+        getenv('DB_USERNAME'),
+        getenv('DB_PASSWORD'),
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+    );
+}
+
+$db = criarConexaoDb();
 
 $redis = new RedisClient([
     'host'     => getenv('REDIS_HOST'),
@@ -43,6 +48,13 @@ while (true) {
         }
     } catch (\Throwable $e) {
         fwrite(STDERR, '[' . date('Y-m-d H:i:s') . '] ERRO: ' . $e->getMessage() . "\n");
+
+        try {
+            $db = criarConexaoDb();
+            fwrite(STDOUT, '[' . date('Y-m-d H:i:s') . "] Reconectado ao banco com sucesso.\n");
+        } catch (\Throwable $e2) {
+            fwrite(STDERR, '[' . date('Y-m-d H:i:s') . '] Falha ao reconectar: ' . $e2->getMessage() . "\n");
+        }
     }
 
     sleep(30);
