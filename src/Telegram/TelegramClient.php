@@ -133,7 +133,7 @@ class TelegramClient
         ];
     }
 
-    /** Teclado para chamado JA atribuido a um tecnico - com Rejeitar */
+    /** Teclado para chamado JA atribuido a um tecnico */
     public static function tecladoChamadoAtribuido(int $chamadoId, string $linkGlpi): array
     {
         return [
@@ -141,7 +141,11 @@ class TelegramClient
                 ['text' => "\u{1f4c2} Abrir chamado", 'url' => $linkGlpi],
             ],
             [
-                ['text' => "\u{274c} Rejeitar", 'callback_data' => "rejeitar:{$chamadoId}"],
+                // Botao "Rejeitar" temporariamente desabilitado (jul/2026).
+                // O codigo completo do fluxo continua em WebhookHandler
+                // (iniciarRejeicao/processarRejeicao) - so remover este
+                // comentario e devolver o botao abaixo para reativar:
+                // ['text' => "\u{274c} Rejeitar", 'callback_data' => "rejeitar:{$chamadoId}"],
                 ['text' => "\u{1f441} Confirmar leitura", 'callback_data' => "leitura:{$chamadoId}"],
             ],
             [
